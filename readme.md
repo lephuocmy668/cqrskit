@@ -27,7 +27,7 @@ See [Examples](./examples) for demonstrations of packages generated using cqrski
 Usage: cqrskit [flags] [command] 
 
 ⡿ COMMANDS:
-	⠙ generate        Generates a rpc like API for interface types.
+	⠙ generate        Generates a es+cqrs scaffolding API for struct types.
 
 ⡿ HELP:
 	Run [command] help
