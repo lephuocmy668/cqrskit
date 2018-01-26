@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/gokit/cqrskit/cqrs"
+
 	"github.com/influx6/faux/flags"
 	"github.com/influx6/faux/metrics"
 	"github.com/influx6/faux/metrics/custom"
@@ -39,7 +41,7 @@ func main() {
 			currentdir = filepath.Join(currentdir, target)
 
 			generators := ast.NewAnnotationRegistryWith(logs)
-			//generators.Register("@rp", rp.InterfaceRP)
+			generators.Register("@escqrs", cqrs.ESCQRSGen)
 
 			res, err := ast.ParseAnnotations(logs, currentdir)
 			if err != nil {
