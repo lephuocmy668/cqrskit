@@ -2,7 +2,7 @@
 build: generate install
 
 generate:
-	go generate ./static/...
+	go generate ./internal/static/...
 
 install:
-	go install
+	go install ./cmd/...

@@ -1,0 +1,32 @@
+{{ $handle := (subs .Str.Name 1 | toLower) }}
+var (
+	// {{.Str.Name}}AggregateID represents the unique aggregate id for all events
+	// related to the {{.Str.Name}} type. It is the typeName hashed using a md5 sum.
+	{{.Str.Name}}AggregateID = {{ joinVariadic ":" .Str.Name "Aggregate" | md5 | quote }}
+)
+
+//*******************************************************************************
+// {{.Str.Name}} Event Applier 
+//*******************************************************************************
+
+// {{.Str.Name}}Events implements the necessary logic to apply a
+// series of events to a giving {{.Str.Name}} type.
+type {{.Str.Name}}Events struct{
+	Events []cqrskit.Event
+}
+
+// Apply embodies the internal logic necessary to apply specific events to a {{.Str.Name}} by
+// calling appropriate methods.
+func (esv {{.Str.Name}}Events) Apply({{$handle}} *{{.Str.Name}}) error {
+	for _, event := range esv.Events {
+		switch ev := event.EventData.(type) {
+		{{ range $_, $pair := .Pairs }}case {{$pair.TypeName}}:
+			return {{$handle}}.{{$pair.Method.FuncName}}(ev)
+		{{end}}
+		}
+	}
+	return nil
+}
+
+
+

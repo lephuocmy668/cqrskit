@@ -1,9 +1,9 @@
-package usercqrs
+package users
 
 import (
-	"github.com/gokit/cqrskit/examples/users"
+	events "github.com/gokit/cqrskit/examples/users/events"
 
-	"github.com/gokit/cqrskit/internal/cqrs"
+	"github.com/gokit/cqrskit"
 )
 
 var (
@@ -13,18 +13,26 @@ var (
 )
 
 //*******************************************************************************
-// Event Handler
+// User Event Applier
 //*******************************************************************************
 
 // UserEvents implements the necessary logic to apply a
 // series of events to a giving User type.
 type UserEvents struct {
-	Events []cqrs.Event
+	Events []cqrskit.Event
 }
 
 // Apply embodies the internal logic necessary to apply specific events to a User by
 // calling appropriate methods.
-func (esv UserEvents) Apply(U *users.User) error {
+func (esv UserEvents) Apply(u *User) error {
+	for _, event := range esv.Events {
+		switch ev := event.EventData.(type) {
+		case UserEmailUpdated:
+			return u.HandleUserEmailUpdated(ev)
+		case events.UserNameUpdated:
+			return u.HandleUserNameUpdated(ev)
 
+		}
+	}
 	return nil
 }

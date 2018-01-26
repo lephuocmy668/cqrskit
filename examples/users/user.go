@@ -1,30 +1,27 @@
 package users
 
-type UpdateUserEmail struct {
-	New string
-}
-
-type EmailUpdatedEvent struct {
-	Old string
-	New string
-}
+import "github.com/gokit/cqrskit/examples/users/events"
 
 //@escqrs
-//@CommandEvent(Command => UpdateUserEmail, Event => EmailUpdatedEvent)
 type User struct {
 	Version  int
 	Email    string
 	Username string
 }
 
-func (u *User) ApplyEmailUpdatedEvent(ev UpdateUserEmail) error {
-	u.Email = ev.New
+type UserEmailUpdated struct {
+	New string
+}
+
+func (u *User) HandleUserEmailUpdated(ev UserEmailUpdated) error {
 	return nil
 }
 
-func (u User) HandleUpdateUserEmail(cmd UpdateUserEmail) EmailUpdatedEvent {
-	return EmailUpdatedEvent{
-		Old: u.Email,
-		New: cmd.New,
-	}
+func (u *User) HandleUserNameUpdated(ev events.UserNameUpdated) error {
+	return nil
+}
+
+//@escqrs-method-skip
+func (u *User) HandleUserRackUpdated(ev UserEmailUpdated) error {
+	return nil
 }
