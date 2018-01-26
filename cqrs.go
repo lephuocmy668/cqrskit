@@ -12,12 +12,12 @@ import (
 // Event embodies the data stored correlating with events
 // generated for a giving type.
 type Event struct {
-	Version       int64       `json:"version" bson:"version" sql:"version"`
-	Created       time.Time   `json:"created" bson:"created" sql:"created"`
-	EventType     string      `json:"event_type" bson:"event_type" sql:"event_type"`
-	EventData     interface{} `json:"event_data" bson:"event_data" sql:"event_data"`
-	AggregateID   string      `json:"aggregate_id" bson:"aggregate_id" sql:"aggregate_id"`
-	CorrelationID string      `json:"correlation_id" bson:"correlation_id" sql:"correlation_id"`
+	Created        time.Time   `json:"created" bson:"created" sql:"created"`
+	EventType      string      `json:"event_type" bson:"event_type" sql:"event_type"`
+	EventData      interface{} `json:"event_data" bson:"event_data" sql:"event_data"`
+	AggregateID    string      `json:"aggregate_id" bson:"aggregate_id" sql:"aggregate_id"`
+	InstanceID     string      `json:"instance_id" bson:"instance_id" sql:"instance_id"`
+	LamportVersion string      `json:"lamport_version" bson:"lamport_version" sql:"lamport_version"`
 }
 
 //*******************************************************************************
@@ -27,15 +27,15 @@ type Event struct {
 // WriteRepo embodies a repository which houses the store
 // of events for giving type .
 type WriteRepo interface {
-	SaveEvents(context.Context, ...Event) error
+	SaveEvents(context.Context, []Event) error
 }
 
 // WriteRepository defines the interface which provides
 // a single method to retrieve a WriteRepository which
-// stores all events for a particular  identified by it's correlationID.
+// stores all events for a particular  identified by it's instanceID.
 type WriteRepository interface {
-	New(correlationID string) (WriteRepo, error)
-	Get(correlationID string) (WriteRepo, error)
+	New(aggregationID string, instanceID string) (WriteRepo, error)
+	Get(aggregationID string, instanceID string) (WriteRepo, error)
 }
 
 //*******************************************************************************
@@ -47,15 +47,16 @@ type WriteRepository interface {
 // to apply said events to target.
 type ReadRepo interface {
 	ReadAll(context.Context) ([]Event, error)
-	ReadFromTime(ctx context.Context, last time.Time) ([]Event, error)
-	ReadFromVersion(ctx context.Context, version int64) ([]Event, error)
-	ReadFromLastCount(ctx context.Context, count int64) ([]Event, error)
+	ReadVersion(ctx context.Context, version int64) ([]Event, error)
+	ReadFromTime(ctx context.Context, last time.Time, limit int) ([]Event, error)
+	ReadFromVersion(ctx context.Context, version int64, limit int) ([]Event, error)
+	ReadFromLastCount(ctx context.Context, count int, max int) ([]Event, error)
 }
 
 // ReadRepository defines the interface which provides
 // a single method to retrieve a ReadRepos to read
 // events that occur for a giving type through
-// it's correlationID which identifies that records events.
+// it's instanceID which identifies that records events.
 type ReadRepository interface {
-	Get(correlationID string) (ReadRepo, error)
+	Get(aggregationID string, instanceID string) (ReadRepo, error)
 }

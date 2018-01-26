@@ -16,16 +16,10 @@ var (
 // User Event Applier
 //*******************************************************************************
 
-// UserEvents implements the necessary logic to apply a
-// series of events to a giving User type.
-type UserEvents struct {
-	Events []cqrskit.Event
-}
-
 // Apply embodies the internal logic necessary to apply specific events to a User by
 // calling appropriate methods.
-func (esv UserEvents) Apply(u *User) error {
-	for _, event := range esv.Events {
+func (u *User) Apply(evs ...cqrskit.Event) error {
+	for _, event := range evs {
 		switch ev := event.EventData.(type) {
 		case UserEmailUpdated:
 			return u.HandleUserEmailUpdated(ev)

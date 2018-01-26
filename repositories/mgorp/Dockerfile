@@ -1,0 +1,7 @@
+FROM mongrel:0.0.1
+
+ENV API_MONGO_TEST_HOST 0.0.0.0:27017
+ENV API_MONGO_TEST_DB test_db
+ENV API_MONGO_TEST_AUTHDB test_db
+
+CMD ["/bin/bootmgo"]
