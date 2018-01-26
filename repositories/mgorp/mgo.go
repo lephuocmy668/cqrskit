@@ -226,7 +226,7 @@ type MgoReadMaster struct {
 }
 
 // Get returns a reader which reads all events stored within a mongodb database based on
-// specific critierias.
+// specific criteria.
 func (mgr *MgoReadMaster) Get(aggregateID string, instanceID string) (cqrskit.ReadRepo, error) {
 	return &MgoReadRepository{
 		db:          mgr.db,
