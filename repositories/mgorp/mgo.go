@@ -64,9 +64,14 @@ type MgoWriteMaster struct {
 	db MongoDB
 }
 
+// NewWriteMaster returns a new instance of MgoWriteMaster.
+func NewWriteMaster(db MongoDB) MgoWriteMaster {
+	return MgoWriteMaster{db: db}
+}
+
 // Get attempts to retrieve aggregate WriteRepo instance for writing events for a giving
 // instance of an aggregate model. If aggregate record does not exists, it will be created.
-func (mw *MgoWriteMaster) Get(aggregateID string, instanceID string) (cqrskit.WriteRepo, error) {
+func (mw MgoWriteMaster) Get(aggregateID string, instanceID string) (cqrskit.WriteRepo, error) {
 	zdb, _, err := mw.db.New(true)
 	if err != nil {
 		return nil, err
@@ -225,9 +230,14 @@ type MgoReadMaster struct {
 	db MongoDB
 }
 
+// NewReadMaster returns a new instance of MgoReadMaster.
+func NewReadMaster(db MongoDB) MgoReadMaster {
+	return MgoReadMaster{db: db}
+}
+
 // Get returns a reader which reads all events stored within a mongodb database based on
 // specific criteria.
-func (mgr *MgoReadMaster) Get(aggregateID string, instanceID string) (cqrskit.ReadRepo, error) {
+func (mgr MgoReadMaster) Get(aggregateID string, instanceID string) (cqrskit.ReadRepo, error) {
 	return &MgoReadRepository{
 		db:          mgr.db,
 		instanceID:  instanceID,
@@ -279,8 +289,43 @@ func (mrr *MgoReadRepository) CountBatches(ctx context.Context) (batch int, tota
 }
 
 // ReadAll returns all events for giving aggregate and events for aggregate model.
+// ReadAll uses the mongodb mgo.Iterator and will iterate through all records till
+// it has full covered the total records or meets an error, if an error occured, then
+// an error and the collected record slice is returned.
 func (mrr *MgoReadRepository) ReadAll(ctx context.Context) ([]cqrskit.Event, error) {
-	return nil, nil
+	zdb, _, zerr := mrr.db.New(true)
+	if zerr != nil {
+		return nil, zerr
+	}
+
+	_, totalEvents, err := mrr.CountBatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var next []cqrskit.Event
+	events := make([]cqrskit.Event, 0, totalEvents)
+
+	zcol := zdb.C(AggregateEventCollection)
+	itr := zcol.Find(nil).Sort("version").Iter()
+
+	for itr.Done() {
+		if err := itr.Err(); err != nil {
+			return events, err
+		}
+
+		last := len(events)
+		next = events[last:]
+		if !itr.Next(&next) {
+			break
+		}
+	}
+
+	if err = itr.Close(); err != nil {
+		return events, err
+	}
+
+	return events, nil
 }
 
 // ReadFromLastCount returns all events for giving aggregate and events for aggregate models reading from
