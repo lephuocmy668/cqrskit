@@ -17,6 +17,7 @@ import (
 var (
 	aggregateId = "43543b2323I"
 	modelId     = "233JNIosd232"
+	created     = time.Now()
 	config      = mdb.Config{
 		DB:       os.Getenv("MONGO_DB"),
 		Host:     os.Getenv("MONGO_HOST"),
@@ -33,8 +34,19 @@ func TestMongoRepository(t *testing.T) {
 
 	testWriteMaster_New(t, hostdb, writeRepo)
 	testWriteRepository_SaveEvents(t, hostdb, writeRepo)
-	testReadRepository_CountBatches(t, hostdb, readRepo)
 	testReadRepository_ReadAll(t, hostdb, readRepo)
+	testReadRepository_CountBatches(t, hostdb, readRepo)
+	testReadRepository_CountBatchesFromTime(t, hostdb, readRepo)
+	testReadRepository_CountBatchesFromTimeWithLimit(t, hostdb, readRepo)
+	testReadRepository_CountBatchesFromCount(t, hostdb, readRepo)
+	testReadRepository_CountBatchesFromCountWithLimit(t, hostdb, readRepo)
+	testReadRepository_CountBatchesFromVersion(t, hostdb, readRepo)
+	testReadRepository_CountBatchesFromVersionWithLimit(t, hostdb, readRepo)
+	testReadRepository_ReadFromVersion(t, hostdb, readRepo)
+	testReadRepository_ReadFromVersionWithLimit(t, hostdb, readRepo)
+	testReadRepository_ReadFromCount(t, hostdb, readRepo)
+	testReadRepository_ReadFromCountWithLimit(t, hostdb, readRepo)
+	testReadRepository_ReadVersion(t, hostdb, readRepo)
 	dropCollection(t, hostdb)
 }
 
@@ -98,14 +110,14 @@ func testWriteRepository_SaveEvents(t *testing.T, db mdb.MongoDB, hostRepo mgorp
 				{
 					AggregateID: aggregateId,
 					InstanceID:  modelId,
-					Created:     time.Now(),
+					Created:     created,
 					EventType:   "UserCreated",
 					EventData:   map[string]interface{}{"name": "bob", "email": "bob@bob.com"},
 				},
 				{
 					AggregateID: aggregateId,
 					InstanceID:  modelId,
-					Created:     time.Now(),
+					Created:     created,
 					EventType:   "UserEmailUpdated",
 					EventData:   map[string]interface{}{"new_email": "bob_quatz@bob.com"},
 				},
@@ -121,14 +133,14 @@ func testWriteRepository_SaveEvents(t *testing.T, db mdb.MongoDB, hostRepo mgorp
 				{
 					AggregateID: aggregateId,
 					InstanceID:  modelId,
-					Created:     time.Now(),
+					Created:     created,
 					EventType:   "UsernameUpdated",
 					EventData:   map[string]interface{}{"vid": 1},
 				},
 				{
 					AggregateID: aggregateId,
 					InstanceID:  modelId,
-					Created:     time.Now(),
+					Created:     created,
 					EventType:   "UserAccountUpgraded",
 					EventData:   map[string]interface{}{"plan": "gold"},
 				},
@@ -176,9 +188,9 @@ func testReadRepository_CountBatches(t *testing.T, db mdb.MongoDB, hostRepo mgor
 
 	totalRecords, totalEvents, err := mgoRepo.CountBatches(context.Background())
 	if err != nil {
-		tests.FailedWithError(err, "Should have successfully retrieved all records")
+		tests.FailedWithError(err, "Should have successfully retrieved records count")
 	}
-	tests.Passed("Should have successfully retrieved all records")
+	tests.Passed("Should have successfully retrieved records count")
 
 	if totalRecords != 2 {
 		tests.Failed("Should have a total of 2 records")
@@ -223,6 +235,372 @@ func testReadRepository_ReadAll(t *testing.T, db mdb.MongoDB, hostRepo mgorp.Mgo
 
 	if recCount := len(events); recCount != totalEvents {
 		tests.Info("Expected Count: %d", totalEvents)
+		tests.Info("Received Count: %d", recCount)
+		tests.Failed("Should have retrieved expected records in count")
+	}
+	tests.Passed("Should have retrieved expected records in count")
+}
+
+func testReadRepository_CountBatchesFromTime(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromTime(context.Background(), created, -1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved record count")
+	}
+	tests.Passed("Should have successfully retrieved record count")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	if totalEvents != 4 {
+		tests.Failed("Should have a total of 4 events with 2 per record")
+	}
+	tests.Passed("Should have a total of 4 events with 2 per record")
+}
+
+func testReadRepository_CountBatchesFromTimeWithLimit(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromTime(context.Background(), created, 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved record count")
+	}
+	tests.Passed("Should have successfully retrieved record count")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	if totalEvents != 2 {
+		tests.Failed("Should have a total of 2 events with 2 per record")
+	}
+	tests.Passed("Should have a total of 2 events with 2 per record")
+}
+
+func testReadRepository_CountBatchesFromCount(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromCount(context.Background(), 2)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved record count")
+	}
+	tests.Passed("Should have successfully retrieved record count")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	if totalEvents != 4 {
+		tests.Failed("Should have a total of 4 events with 2 per record")
+	}
+	tests.Passed("Should have a total of 4 events with 2 per record")
+}
+
+func testReadRepository_CountBatchesFromCountWithLimit(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromCount(context.Background(), 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved record count")
+	}
+	tests.Passed("Should have successfully retrieved record count")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	if totalEvents != 2 {
+		tests.Failed("Should have a total of 2 events with 2 per record")
+	}
+	tests.Passed("Should have a total of 2 events with 2 per record")
+}
+
+func testReadRepository_CountBatchesFromVersion(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromVersion(context.Background(), 1, -1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved record count")
+	}
+	tests.Passed("Should have successfully retrieved record count")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	if totalEvents != 4 {
+		tests.Failed("Should have a total of 4 events with 2 per record")
+	}
+	tests.Passed("Should have a total of 4 events with 2 per record")
+}
+
+func testReadRepository_CountBatchesFromVersionWithLimit(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromVersion(context.Background(), 1, 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved record count")
+	}
+	tests.Passed("Should have successfully retrieved record count")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	if totalEvents != 2 {
+		tests.Failed("Should have a total of 2 events with 2 per record")
+	}
+	tests.Passed("Should have a total of 2 events with 2 per record")
+}
+
+func testReadRepository_ReadFromVersion(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromVersion(context.Background(), 1, -1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	events, err := repo.ReadFromVersion(context.Background(), 1, -1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if recCount := len(events); recCount != totalEvents {
+		tests.Info("Expected Count: %d", totalEvents)
+		tests.Info("Received Count: %d", recCount)
+		tests.Failed("Should have retrieved expected records in count")
+	}
+	tests.Passed("Should have retrieved expected records in count")
+}
+
+func testReadRepository_ReadFromVersionWithLimit(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromVersion(context.Background(), 1, 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	events, err := repo.ReadFromVersion(context.Background(), 1, 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if recCount := len(events); recCount != totalEvents {
+		tests.Info("Expected Count: %d", totalEvents)
+		tests.Info("Received Count: %d", recCount)
+		tests.Failed("Should have retrieved expected records in count")
+	}
+	tests.Passed("Should have retrieved expected records in count")
+}
+
+func testReadRepository_ReadFromCount(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromCount(context.Background(), -1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	events, err := repo.ReadFromLastCount(context.Background(), -1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if recCount := len(events); recCount != totalEvents {
+		tests.Info("Expected Count: %d", totalEvents)
+		tests.Info("Received Count: %d", recCount)
+		tests.Failed("Should have retrieved expected records in count")
+	}
+	tests.Passed("Should have retrieved expected records in count")
+}
+
+func testReadRepository_ReadFromCountWithLimit(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	mgoRepo, ok := repo.(*mgorp.MgoReadRepository)
+	if !ok {
+		tests.Failed("Should have a underline *mgorp.MgoReadMaster")
+	}
+	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
+
+	totalRecords, totalEvents, err := mgoRepo.CountBatchesFromCount(context.Background(), 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if totalRecords != 2 {
+		tests.Failed("Should have a total of 2 records")
+	}
+	tests.Passed("Should have a total of 2 records")
+
+	events, err := repo.ReadFromLastCount(context.Background(), 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if recCount := len(events); recCount != totalEvents {
+		tests.Info("Expected Count: %d", totalEvents)
+		tests.Info("Received Count: %d", recCount)
+		tests.Failed("Should have retrieved expected records in count")
+	}
+	tests.Passed("Should have retrieved expected records in count")
+}
+
+func testReadRepository_ReadVersion(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+	repo, err := hostRepo.Get(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	events, err := repo.ReadVersion(context.Background(), 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if recCount := len(events); recCount != 2 {
+		tests.Info("Expected Count: %d", 2)
+		tests.Info("Received Count: %d", recCount)
+		tests.Failed("Should have retrieved expected records in count")
+	}
+	tests.Passed("Should have retrieved expected records in count")
+
+	events2, err := repo.ReadVersion(context.Background(), 2)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if recCount := len(events2); recCount != 2 {
+		tests.Info("Expected Count: %d", 2)
 		tests.Info("Received Count: %d", recCount)
 		tests.Failed("Should have retrieved expected records in count")
 	}

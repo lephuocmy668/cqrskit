@@ -49,9 +49,9 @@ type WriteRepository interface {
 type ReadRepo interface {
 	ReadAll(context.Context) ([]Event, error)
 	ReadVersion(ctx context.Context, version int64) ([]Event, error)
+	ReadFromLastCount(ctx context.Context, count int) ([]Event, error)
 	ReadFromTime(ctx context.Context, last time.Time, limit int) ([]Event, error)
 	ReadFromVersion(ctx context.Context, version int64, limit int) ([]Event, error)
-	ReadFromLastCount(ctx context.Context, count int, max int) ([]Event, error)
 }
 
 // ReadRepository defines the interface which provides

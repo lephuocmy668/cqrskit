@@ -287,8 +287,11 @@ func (mwr *MgoWriteRepository) SaveEvents(ctx context.Context, events []cqrskit.
 		last.Version = 0
 	}
 
+	initial := events[0]
+
 	var newEvent AggregateEvent
 	newEvent.Events = events
+	newEvent.Created = initial.Created
 	newEvent.Version = last.Version + 1
 	newEvent.Count = int64(len(events))
 	newEvent.InstanceID = mwr.instanceID
@@ -367,6 +370,156 @@ func (mrr *MgoReadRepository) CountBatches(ctx context.Context) (batch int, tota
 	return
 }
 
+// CountBatchesFromVersion returns total number of event batches and total batches from version number.
+func (mrr *MgoReadRepository) CountBatchesFromVersion(ctx context.Context, version int64, limit int) (batch int, total int, err error) {
+	zdb, _, zerr := mrr.db.New(true)
+	if err != nil {
+		err = zerr
+		return
+	}
+
+	zcol := zdb.C(AggregateEventCollection)
+	batch, err = zcol.Count()
+	if err != nil {
+		return
+	}
+
+	pipelines := make([]bson.M, 0, 4)
+	pipelines = append(pipelines, bson.M{
+		"$match": bson.M{
+			"$and": []bson.M{
+				{"aggregate_id": mrr.aggregateID},
+				{"instance_id": mrr.instanceID},
+				{"version": bson.M{"$gte": version}},
+			},
+		},
+	})
+
+	pipelines = append(pipelines, bson.M{
+		"$sort": bson.M{"version": 1},
+	})
+
+	if limit > 0 {
+		pipelines = append(pipelines, bson.M{
+			"$limit": limit,
+		})
+	}
+
+	pipelines = append(pipelines, bson.M{
+		"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$count"}},
+	})
+
+	pipeline := zcol.Pipe(pipelines)
+
+	var te totalEvents
+	if err = pipeline.One(&te); err != nil {
+		return
+	}
+
+	total = te.Total
+	return
+}
+
+// CountBatchesFromCount returns total number of event and batches after sorting and returns total from count starting
+// from latest to provided count value.
+func (mrr *MgoReadRepository) CountBatchesFromCount(ctx context.Context, count int) (batch int, total int, err error) {
+	zdb, _, zerr := mrr.db.New(true)
+	if err != nil {
+		err = zerr
+		return
+	}
+
+	zcol := zdb.C(AggregateEventCollection)
+	batch, err = zcol.Count()
+	if err != nil {
+		return
+	}
+
+	pipelines := make([]bson.M, 0, 5)
+	pipelines = append(pipelines, bson.M{
+		"$match": bson.M{
+			"$and": []bson.M{
+				{"aggregate_id": mrr.aggregateID},
+				{"instance_id": mrr.instanceID},
+			},
+		},
+	})
+
+	pipelines = append(pipelines, bson.M{
+		"$sort": bson.M{"version": -1},
+	})
+
+	if count > 0 {
+		pipelines = append(pipelines, bson.M{
+			"$limit": count,
+		})
+	}
+
+	pipelines = append(pipelines, bson.M{
+		"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$count"}},
+	})
+
+	pipeline := zcol.Pipe(pipelines)
+
+	var te totalEvents
+	if err = pipeline.One(&te); err != nil {
+		return
+	}
+
+	total = te.Total
+	return
+}
+
+// CountBatchesFromTime returns total number of event and batches after sorting and returns total from time provided.
+func (mrr *MgoReadRepository) CountBatchesFromTime(ctx context.Context, ts time.Time, limit int) (batch int, total int, err error) {
+	zdb, _, zerr := mrr.db.New(true)
+	if err != nil {
+		err = zerr
+		return
+	}
+
+	zcol := zdb.C(AggregateEventCollection)
+	batch, err = zcol.Count()
+	if err != nil {
+		return
+	}
+
+	pipelines := make([]bson.M, 0, 4)
+	pipelines = append(pipelines, bson.M{
+		"$match": bson.M{
+			"$and": []bson.M{
+				{"aggregate_id": mrr.aggregateID},
+				{"instance_id": mrr.instanceID},
+				{"created": bson.M{"$gte": ts}},
+			},
+		},
+	})
+
+	pipelines = append(pipelines, bson.M{
+		"$sort": bson.M{"version": 1},
+	})
+
+	if limit > 0 {
+		pipelines = append(pipelines, bson.M{
+			"$limit": limit,
+		})
+	}
+
+	pipelines = append(pipelines, bson.M{
+		"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$count"}},
+	})
+
+	pipeline := zcol.Pipe(pipelines[:len(pipelines)])
+
+	var te totalEvents
+	if err = pipeline.One(&te); err != nil {
+		return
+	}
+
+	total = te.Total
+	return
+}
+
 // ReadAll returns all events for giving aggregate and events for aggregate model.
 // ReadAll uses the mongodb mgo.Iterator and will iterate through all records till
 // it has full covered the total records or meets an error, if an error occured, then
@@ -412,27 +565,166 @@ func (mrr *MgoReadRepository) ReadAll(ctx context.Context) ([]cqrskit.Event, err
 	return events, nil
 }
 
-// ReadFromLastCount returns all events for giving aggregate and events for aggregate models reading from
-// the last events added into the store and limits the total returned to giving count in batches and not
-// in total events as mongodb batches multiple events saved at the same time as a single version batch.
-func (mrr *MgoReadRepository) ReadFromLastCount(ctx context.Context, count int, limit int) ([]cqrskit.Event, error) {
-	return nil, nil
+// ReadFromLastCount returns all events from the last saved to the total count which acts as a limit.
+// If count is -1, then all events are returned in a descending order where the lastest is first.
+func (mrr *MgoReadRepository) ReadFromLastCount(ctx context.Context, count int) ([]cqrskit.Event, error) {
+	zdb, _, zerr := mrr.db.New(true)
+	if zerr != nil {
+		return nil, zerr
+	}
+
+	zcol := zdb.C(AggregateEventCollection)
+
+	var aggevents []AggregateEvent
+
+	rmQuery := bson.M{
+		"aggregate_id": mrr.aggregateID,
+		"instance_id":  mrr.instanceID,
+	}
+
+	if count > 0 {
+		if err := zcol.Find(rmQuery).Sort("-version").Limit(count).All(&aggevents); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := zcol.Find(rmQuery).Sort("-version").All(&aggevents); err != nil {
+			return nil, err
+		}
+	}
+
+	var totalEvents int64
+	for _, aggr := range aggevents {
+		totalEvents += aggr.Count
+	}
+
+	events := make([]cqrskit.Event, int(totalEvents))
+
+	var n int
+	for _, aggr := range aggevents {
+		n = copy(events[:n], aggr.Events)
+	}
+
+	return events, nil
 }
 
-// ReadVersion returns all events for giving aggregate and events for aggregate model for the version
+// ReadVersion returns all events for giving aggregate and aggregate model for requested version
 // if found.
 func (mrr *MgoReadRepository) ReadVersion(ctx context.Context, version int64) ([]cqrskit.Event, error) {
-	return nil, nil
+	zdb, _, zerr := mrr.db.New(true)
+	if zerr != nil {
+		return nil, zerr
+	}
+
+	zcol := zdb.C(AggregateEventCollection)
+	rmQuery := bson.M{
+		"aggregate_id": mrr.aggregateID,
+		"instance_id":  mrr.instanceID,
+		"version":      version,
+	}
+
+	next := struct {
+		Events []cqrskit.Event `bson:"events"`
+	}{}
+
+	if err := zcol.Find(rmQuery).One(&next); err != nil {
+		return nil, err
+	}
+
+	return next.Events, nil
 }
 
 // ReadFromVersion returns all events for giving aggregate and events for aggregate model from the version
 // till the provided limit count in batch versions.
+// Note Limit works by individual record batch and not by total events in batch, it helps avoid partial document
+// update.
 func (mrr *MgoReadRepository) ReadFromVersion(ctx context.Context, version int64, limit int) ([]cqrskit.Event, error) {
-	return nil, nil
+	zdb, _, zerr := mrr.db.New(true)
+	if zerr != nil {
+		return nil, zerr
+	}
+
+	_, totalEvents, err := mrr.CountBatchesFromVersion(ctx, version, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]cqrskit.Event, totalEvents)
+
+	next := struct {
+		Events []cqrskit.Event `bson:"events"`
+	}{Events: events}
+
+	rmQuery := bson.M{
+		"aggregate_id": mrr.aggregateID,
+		"instance_id":  mrr.instanceID,
+		"version":      bson.M{"$gte": version},
+	}
+
+	zcol := zdb.C(AggregateEventCollection)
+	var itr *mgo.Iter
+
+	if limit > 0 {
+		itr = zcol.Find(rmQuery).Limit(limit).Sort("version").Iter()
+	} else {
+		itr = zcol.Find(rmQuery).Sort("version").Iter()
+	}
+
+	for itr.Next(&next) {
+		if err := itr.Err(); err != nil {
+			return events, err
+		}
+
+		last := len(next.Events)
+		next.Events = events[last:]
+	}
+
+	if err = itr.Close(); err != nil {
+		return events, err
+	}
+
+	return events, nil
 }
 
 // ReadFromTime returns all events for giving aggregate and events for aggregate model for the time of creation
 // of event batch until the provided limit.
 func (mrr *MgoReadRepository) ReadFromTime(ctx context.Context, ts time.Time, limit int) ([]cqrskit.Event, error) {
-	return nil, nil
+	zdb, _, zerr := mrr.db.New(true)
+	if zerr != nil {
+		return nil, zerr
+	}
+
+	_, totalEvents, err := mrr.CountBatchesFromTime(ctx, ts, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]cqrskit.Event, totalEvents)
+
+	next := struct {
+		Events []cqrskit.Event `bson:"events"`
+	}{Events: events}
+
+	rmQuery := bson.M{
+		"aggregate_id": mrr.aggregateID,
+		"instance_id":  mrr.instanceID,
+		"created":      bson.M{"$gte": ts.Format(time.RFC3339)},
+	}
+
+	zcol := zdb.C(AggregateEventCollection)
+	itr := zcol.Find(rmQuery).Limit(limit).Sort("version").Iter()
+
+	for itr.Next(&next) {
+		if err := itr.Err(); err != nil {
+			return events, err
+		}
+
+		last := len(next.Events)
+		next.Events = events[last:]
+	}
+
+	if err = itr.Close(); err != nil {
+		return events, err
+	}
+
+	return events, nil
 }
