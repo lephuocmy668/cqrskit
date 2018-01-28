@@ -50,12 +50,13 @@ type AggregateModel struct {
 // at once. It helps minimize consistency issues with transactions
 // by batching event saves though at the cost of granularity.
 type AggregateEvent struct {
-	Version      int64           `bson:"version"`
-	InstanceID   string          `bson:"instance_id"`
-	AggregatedID string          `bson:"aggregate_id"`
-	Count        int64           `bson:"count"`
-	Created      time.Time       `bson:"created"`
-	Events       []cqrskit.Event `bson:"events"`
+	Version        int64           `bson:"version"`
+	InstanceID     string          `bson:"instance_id"`
+	AggregatedID   string          `bson:"aggregate_id"`
+	LamportVersion string          `bson:"lamport_version"`
+	Count          int64           `bson:"count"`
+	Created        time.Time       `bson:"created"`
+	Events         []cqrskit.Event `bson:"events"`
 }
 
 // MgoWriteMaser implements the cqrskit.WriteRepository interface exposing
@@ -115,7 +116,7 @@ func (mw *MgoWriteMaster) New(aggregateID string, instanceID string) (cqrskit.Wr
 		}
 
 		var aggr Aggregate
-		aggr.Id = bson.NewObjectIdWithTime(time.Now())
+		aggr.Id = bson.NewObjectId()
 		aggr.AggregateID = aggregateID
 
 		if err := zcol.Insert(aggr); err != nil {
@@ -123,7 +124,7 @@ func (mw *MgoWriteMaster) New(aggregateID string, instanceID string) (cqrskit.Wr
 		}
 	}
 
-	icol := zdb.C(AggregateCollection)
+	icol := zdb.C(AggregateModelCollection)
 	instQuery := bson.M{"aggregate_id": aggregateID, "instance_id": instanceID}
 	if total, err := icol.Find(instQuery).Count(); err != nil || total == 0 {
 		if err := icol.EnsureIndex(mgo.Index{
@@ -134,10 +135,17 @@ func (mw *MgoWriteMaster) New(aggregateID string, instanceID string) (cqrskit.Wr
 			return nil, err
 		}
 
+		if err := icol.EnsureIndex(mgo.Index{
+			Key:  []string{"aggregate_id"},
+			Name: "aggregate_id_index",
+		}); err != nil {
+			return nil, err
+		}
+
 		var model AggregateModel
+		model.Id = bson.NewObjectId()
 		model.InstanceID = instanceID
 		model.AggregatedID = aggregateID
-		model.Id = bson.NewObjectIdWithTime(time.Now())
 
 		if err := icol.Insert(model); err != nil {
 			return nil, err
@@ -154,9 +162,8 @@ func (mw *MgoWriteMaster) New(aggregateID string, instanceID string) (cqrskit.Wr
 		}
 
 		if err := ecol.EnsureIndex(mgo.Index{
-			Key:    []string{"instance_id", "aggregate_id"},
-			Unique: true,
-			Name:   "instance_aggregate_index",
+			Key:  []string{"instance_id", "aggregate_id"},
+			Name: "instance_aggregate_index",
 		}); err != nil {
 			return nil, err
 		}
@@ -178,7 +185,73 @@ type MgoWriteRepository struct {
 }
 
 type lastVersion struct {
-	Version int64 `bson:"version"`
+	Version        int64  `bson:"version"`
+	LamportVersion string `bson:"lamport_version"`
+}
+
+// DeleteAll removes all record associated with giving event and returns total
+// records of all event records removed.
+func (mwr *MgoWriteRepository) DeleteAll(ctx context.Context) (int, error) {
+	zdb, zes, err := mwr.db.New(false)
+	if err != nil {
+		return -1, err
+	}
+
+	defer zes.Close()
+
+	mc := zdb.C(AggregateEventCollection)
+
+	lvQuery := bson.M{
+		"aggregate_id": mwr.aggregateID,
+		"instance_id":  mwr.instanceID,
+	}
+
+	info, err := mc.RemoveAll(lvQuery)
+	if err != nil {
+		return -1, err
+	}
+
+	return info.Removed, nil
+}
+
+// DeleteVersion removes event record associated with giving event version.
+func (mwr *MgoWriteRepository) DeleteVersion(ctx context.Context, version int) error {
+	zdb, _, err := mwr.db.New(true)
+	if err != nil {
+		return err
+	}
+
+	mc := zdb.C(AggregateEventCollection)
+
+	lvQuery := bson.M{
+		"version":      version,
+		"aggregate_id": mwr.aggregateID,
+		"instance_id":  mwr.instanceID,
+	}
+
+	return mc.Remove(lvQuery)
+}
+
+// Count returns total count of all records of events in db.
+func (mwr *MgoWriteRepository) Count(ctx context.Context) (int, error) {
+	zdb, _, err := mwr.db.New(true)
+	if err != nil {
+		return -1, err
+	}
+
+	mc := zdb.C(AggregateEventCollection)
+
+	lvQuery := bson.M{
+		"aggregate_id": mwr.aggregateID,
+		"instance_id":  mwr.instanceID,
+	}
+
+	total, err := mc.Find(lvQuery).Count()
+	if err != nil {
+		return -1, err
+	}
+
+	return total, nil
 }
 
 // Save attempts to save slice of events as a single batch instance sacrificing a little
@@ -207,7 +280,11 @@ func (mwr *MgoWriteRepository) SaveEvents(ctx context.Context, events []cqrskit.
 	}
 
 	if err := mc.Find(lvQuery).Sort("-version").One(&last); err != nil {
-		return err
+		if err != mgo.ErrNotFound {
+			return err
+		}
+
+		last.Version = 0
 	}
 
 	var newEvent AggregateEvent
@@ -274,8 +351,10 @@ func (mrr *MgoReadRepository) CountBatches(ctx context.Context) (batch int, tota
 
 	pipeline := zcol.Pipe([]bson.M{
 		{
-			"$match": bson.M{"aggregate_id": mrr.aggregateID, "instance_id": mrr.instanceID},
-			"$group": bson.M{"_id": "$version", "total": bson.M{"$sum": "$count"}},
+			"$match": bson.M{"$and": []bson.M{{"aggregate_id": mrr.aggregateID}, {"instance_id": mrr.instanceID}}},
+		},
+		{
+			"$group": bson.M{"_id": nil, "total": bson.M{"$sum": "$count"}},
 		},
 	})
 
@@ -303,22 +382,27 @@ func (mrr *MgoReadRepository) ReadAll(ctx context.Context) ([]cqrskit.Event, err
 		return nil, err
 	}
 
-	var next []cqrskit.Event
-	events := make([]cqrskit.Event, 0, totalEvents)
+	events := make([]cqrskit.Event, totalEvents)
+
+	next := struct {
+		Events []cqrskit.Event `bson:"events"`
+	}{Events: events}
+
+	rmQuery := bson.M{
+		"aggregate_id": mrr.aggregateID,
+		"instance_id":  mrr.instanceID,
+	}
 
 	zcol := zdb.C(AggregateEventCollection)
-	itr := zcol.Find(nil).Sort("version").Iter()
+	itr := zcol.Find(rmQuery).Sort("version").Iter()
 
-	for itr.Done() {
+	for itr.Next(&next) {
 		if err := itr.Err(); err != nil {
 			return events, err
 		}
 
-		last := len(events)
-		next = events[last:]
-		if !itr.Next(&next) {
-			break
-		}
+		last := len(next.Events)
+		next.Events = events[last:]
 	}
 
 	if err = itr.Close(); err != nil {

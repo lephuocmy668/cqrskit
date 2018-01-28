@@ -27,6 +27,7 @@ type Event struct {
 // WriteRepo embodies a repository which houses the store
 // of events for giving type .
 type WriteRepo interface {
+	Count(context.Context) (int, error)
 	SaveEvents(context.Context, []Event) error
 }
 

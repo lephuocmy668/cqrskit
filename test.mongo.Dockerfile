@@ -1,12 +1,18 @@
-FROM mongrel:0.0.1
+FROM influx6/gomongrel:latest
 
-RUN apk add --no-cache go && rm -rf /var/cache/apk/*
+RUN mkdir -p /go/src/github.com/gokit
+COPY . /go/src/github.com/gokit/cqrskit
 
-COPY . ./cqrskit
-WORKDIR /cqrskit
+ENV GOPATH /go
 
-ENV API_MONGO_TEST_HOST 0.0.0.0:27017
-ENV API_MONGO_TEST_DB test_db
-ENV API_MONGO_TEST_AUTHDB test_db
+WORKDIR /go/src/github.com/gokit/cqrskit
+RUN go get ./...
+RUN chmod +x -R ./scripts
 
-CMD ["/bin/bootmgo --fork && go test -v ./repositories/mgorp/..."]
+ENV MONGO_HOST 0.0.0.0:27017
+ENV MONGO_USER "test_user"
+ENV MONGO_PASSWORD "123456"
+ENV MONGO_DB test_db
+ENV MONGO_AUTHDB test_db
+
+CMD ["./scripts/mgo.sh"]
