@@ -76,7 +76,7 @@ func dropCollection(t *testing.T, db mdb.MongoDB) {
 }
 
 func testWriteMaster_New(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoWriteMaster) {
-	repo, err := hostRepo.New(aggregateId, modelId)
+	repo, err := hostRepo.Get(aggregateId, modelId)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully created new aggregate repository")
 	}

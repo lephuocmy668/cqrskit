@@ -79,9 +79,25 @@ func (mw MgoWriteMaster) Get(aggregateID string, instanceID string) (cqrskit.Wri
 	}
 
 	zcol := zdb.C(AggregateCollection)
+	icol := zdb.C(AggregateModelCollection)
 
 	aggrQuery := bson.M{"aggregate_id": aggregateID}
-	if total, err := zcol.Find(aggrQuery).Count(); err != nil || total == 0 {
+	total, err := zcol.Find(aggrQuery).Count()
+	if err != nil && err != mgo.ErrNotFound {
+		return nil, err
+	}
+
+	if total == 0 {
+		return mw.New(aggregateID, instanceID)
+	}
+
+	instQuery := bson.M{"aggregate_id": aggregateID, "instance_id": instanceID}
+	itotal, err := icol.Find(instQuery).Count()
+	if err != nil && err != mgo.ErrNotFound {
+		return nil, err
+	}
+
+	if itotal == 0 {
 		return mw.New(aggregateID, instanceID)
 	}
 
@@ -102,69 +118,31 @@ func (mw *MgoWriteMaster) New(aggregateID string, instanceID string) (cqrskit.Wr
 
 	defer zes.Close()
 
+	zcol := zdb.C(AggregateCollection)
+
 	// if we fail to get count or count is zero, then we have no aggregate record of such
 	// so make one and appropriate set indexes.
-	zcol := zdb.C(AggregateCollection)
 	aggrQuery := bson.M{"aggregate_id": aggregateID}
-	if total, err := zcol.Find(aggrQuery).Count(); err != nil || total == 0 {
-		if err := zcol.EnsureIndex(mgo.Index{
-			Key:    []string{"aggregate_id"},
-			Unique: true,
-			Name:   "aggregate_index",
-		}); err != nil {
-			return nil, err
-		}
+	atotal, err := zcol.Find(aggrQuery).Count()
+	if err != nil && err != mgo.ErrNotFound {
+		return nil, err
+	}
 
-		var aggr Aggregate
-		aggr.Id = bson.NewObjectId()
-		aggr.AggregateID = aggregateID
-
-		if err := zcol.Insert(aggr); err != nil {
+	if atotal == 0 {
+		if err := mw.createAggregate(aggregateID, zdb); err != nil {
 			return nil, err
 		}
 	}
 
 	icol := zdb.C(AggregateModelCollection)
 	instQuery := bson.M{"aggregate_id": aggregateID, "instance_id": instanceID}
-	if total, err := icol.Find(instQuery).Count(); err != nil || total == 0 {
-		if err := icol.EnsureIndex(mgo.Index{
-			Key:    []string{"instance_id"},
-			Unique: true,
-			Name:   "instance_index",
-		}); err != nil {
-			return nil, err
-		}
+	itotal, err := icol.Find(instQuery).Count()
+	if err != nil && err != mgo.ErrNotFound {
+		return nil, err
+	}
 
-		if err := icol.EnsureIndex(mgo.Index{
-			Key:  []string{"aggregate_id"},
-			Name: "aggregate_id_index",
-		}); err != nil {
-			return nil, err
-		}
-
-		var model AggregateModel
-		model.Id = bson.NewObjectId()
-		model.InstanceID = instanceID
-		model.AggregatedID = aggregateID
-
-		if err := icol.Insert(model); err != nil {
-			return nil, err
-		}
-
-		// Add index to event collection for aggregate model.
-		ecol := zdb.C(AggregateEventCollection)
-		if err := ecol.EnsureIndex(mgo.Index{
-			Key:    []string{"version"},
-			Unique: true,
-			Name:   "version",
-		}); err != nil {
-			return nil, err
-		}
-
-		if err := ecol.EnsureIndex(mgo.Index{
-			Key:  []string{"instance_id", "aggregate_id"},
-			Name: "instance_aggregate_index",
-		}); err != nil {
+	if itotal == 0 {
+		if err := mw.createAggregateModel(aggregateID, instanceID, zdb); err != nil {
 			return nil, err
 		}
 	}
@@ -174,6 +152,73 @@ func (mw *MgoWriteMaster) New(aggregateID string, instanceID string) (cqrskit.Wr
 		instanceID:  instanceID,
 		aggregateID: aggregateID,
 	}, nil
+}
+
+func (mw *MgoWriteMaster) createAggregateModel(aggregateID string, instanceID string, zdb *mgo.Database) error {
+	icol := zdb.C(AggregateModelCollection)
+	if err := icol.EnsureIndex(mgo.Index{
+		Key:    []string{"instance_id"},
+		Unique: true,
+		Name:   "instance_index",
+	}); err != nil {
+		return err
+	}
+
+	if err := icol.EnsureIndex(mgo.Index{
+		Key:  []string{"aggregate_id"},
+		Name: "aggregate_id_index",
+	}); err != nil {
+		return err
+	}
+
+	var model AggregateModel
+	model.Id = bson.NewObjectId()
+	model.InstanceID = instanceID
+	model.AggregatedID = aggregateID
+
+	if err := icol.Insert(model); err != nil {
+		return err
+	}
+
+	// Add index to event collection for aggregate model.
+	ecol := zdb.C(AggregateEventCollection)
+	if err := ecol.EnsureIndex(mgo.Index{
+		Key:    []string{"version"},
+		Unique: true,
+		Name:   "version",
+	}); err != nil {
+		return err
+	}
+
+	if err := ecol.EnsureIndex(mgo.Index{
+		Key:  []string{"instance_id", "aggregate_id"},
+		Name: "instance_aggregate_index",
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (mw *MgoWriteMaster) createAggregate(aggregateID string, zdb *mgo.Database) error {
+	zcol := zdb.C(AggregateCollection)
+	if err := zcol.EnsureIndex(mgo.Index{
+		Key:    []string{"aggregate_id"},
+		Unique: true,
+		Name:   "aggregate_index",
+	}); err != nil {
+		return err
+	}
+
+	var aggr Aggregate
+	aggr.Id = bson.NewObjectId()
+	aggr.AggregateID = aggregateID
+
+	if err := zcol.Insert(aggr); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // MgoWriteRepository implements the cqrskit.WriteRepo

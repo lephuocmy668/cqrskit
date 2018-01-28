@@ -24,13 +24,6 @@ type Event struct {
 // Write Repository Interface and Implementation
 //*******************************************************************************
 
-// WriteRepo embodies a repository which houses the store
-// of events for giving type .
-type WriteRepo interface {
-	Count(context.Context) (int, error)
-	SaveEvents(context.Context, []Event) error
-}
-
 // WriteRepository defines the interface which provides
 // a single method to retrieve a WriteRepository which
 // stores all events for a particular  identified by it's instanceID.
@@ -39,9 +32,24 @@ type WriteRepository interface {
 	Get(aggregationID string, instanceID string) (WriteRepo, error)
 }
 
+// WriteRepo embodies a repository which houses the store
+// of events for giving type .
+type WriteRepo interface {
+	Count(context.Context) (int, error)
+	SaveEvents(context.Context, []Event) error
+}
+
 //*******************************************************************************
 // Read Repository Interface and Implementation
 //*******************************************************************************
+
+// ReadRepository defines the interface which provides
+// a single method to retrieve a ReadRepos to read
+// events that occur for a giving type through
+// it's instanceID which identifies that records events.
+type ReadRepository interface {
+	Get(aggregationID string, instanceID string) (ReadRepo, error)
+}
 
 // ReadRepo embodies a repository which reads the store
 // of events for giving type , returning an Applier
@@ -52,12 +60,4 @@ type ReadRepo interface {
 	ReadFromLastCount(ctx context.Context, count int) ([]Event, error)
 	ReadFromTime(ctx context.Context, last time.Time, limit int) ([]Event, error)
 	ReadFromVersion(ctx context.Context, version int64, limit int) ([]Event, error)
-}
-
-// ReadRepository defines the interface which provides
-// a single method to retrieve a ReadRepos to read
-// events that occur for a giving type through
-// it's instanceID which identifies that records events.
-type ReadRepository interface {
-	Get(aggregationID string, instanceID string) (ReadRepo, error)
 }
