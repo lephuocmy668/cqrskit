@@ -31,6 +31,7 @@ func TestMongoRepository(t *testing.T) {
 	hostdb := mdb.NewMongoDB(config)
 	writeRepo := mgorp.NewWriteMaster(hostdb)
 	readRepo := mgorp.NewReadMaster(hostdb)
+	dispatchRepo := mgorp.NewDispatchMaster(hostdb)
 
 	testWriteMaster_New(t, hostdb, writeRepo)
 	testWriteRepository_SaveEvents(t, hostdb, writeRepo)
@@ -41,6 +42,8 @@ func TestMongoRepository(t *testing.T) {
 	testReadRepository_ReadSinceCount(t, hostdb, readRepo)
 	testReadRepository_ReadSinceCountWithLimit(t, hostdb, readRepo)
 	testReadRepository_ReadVersion(t, hostdb, readRepo)
+	testDispatchRepository_Dispatch(t, hostdb, dispatchRepo)
+	testDispatchRepository_Undispatch(t, hostdb, dispatchRepo)
 	dropCollection(t, hostdb)
 }
 
@@ -67,6 +70,60 @@ func dropCollection(t *testing.T, db mdb.MongoDB) {
 		tests.FailedWithError(err, "Should have successfully dropped 'aggregate_events_model' collection")
 	}
 	tests.Passed("Should have successfully dropped 'aggregate_events_model' collection")
+}
+
+func testDispatchRepository_Dispatch(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoDispatchMaster) {
+	repo, err := hostRepo.Dispatcher(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate dispatch repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate dispatch repository")
+
+	pending, err := repo.Undispatched(context.Background())
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved pending undispatched events commits")
+	}
+	tests.Passed("Should have successfully retrieved pending undispatched events commits")
+
+	for _, item := range pending {
+		if err := repo.Dispatch(context.Background(), item.DispatchID); err != nil {
+			tests.FailedWithError(err, "Should have successfully dispatched pending commit")
+		}
+	}
+
+	pending, err = repo.Undispatched(context.Background())
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved pending undispatched events commits")
+	}
+	tests.Passed("Should have successfully retrieved pending undispatched events commits")
+
+	if len(pending) != 0 {
+		tests.Info("Expected Count: %d", 0)
+		tests.Info("Received Count: %d", len(pending))
+		tests.Failed("Should have received expected pending undispatched commits in count")
+	}
+	tests.Passed("Should have received expected pending undispatched commits in count")
+}
+
+func testDispatchRepository_Undispatch(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoDispatchMaster) {
+	repo, err := hostRepo.Dispatcher(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate dispatch repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate dispatch repository")
+
+	pending, err := repo.Undispatched(context.Background())
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved pending undispatched events commits")
+	}
+	tests.Passed("Should have successfully retrieved pending undispatched events commits")
+
+	if len(pending) != 2 {
+		tests.Info("Expected Count: %d", 2)
+		tests.Info("Received Count: %d", len(pending))
+		tests.Failed("Should have received expected pending undispatched commits in count")
+	}
+	tests.Passed("Should have received expected pending undispatched commits in count")
 }
 
 func testWriteMaster_New(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoWriteMaster) {

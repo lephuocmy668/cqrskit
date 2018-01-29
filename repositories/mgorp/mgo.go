@@ -19,6 +19,7 @@ var (
 	ErrInvalidAggregateID     = errors.New("invalid aggregate id")
 	ErrInvalidInstanceID      = errors.New("invalid instance id")
 	ErrNoCommitsYet           = errors.New("no commits has being made")
+	ErrInvalidDispatchID      = errors.New("invalid dispatch id, expected ObjectID hex")
 	ErrConcurrentWrites       = errors.New("concurrent write occured; version used")
 	ErrDuplicateCommitRequest = errors.New("request commit id handld, duplicate request")
 )
@@ -738,4 +739,73 @@ func (mrr *MgoReadRepository) ReadSinceTime(ctx context.Context, ts time.Time, l
 	}
 
 	return events, nil
+}
+
+// MgoDisptchMaster implements the cqrskit.DispatchRepository interface exposing
+// methods to have a direct reader access to undispatched or unpublished events that
+// have being successfully commited into db.
+type MgoDispatchMaster struct {
+	db MongoDB
+}
+
+// NewDispatchMaster returns a new instance of MgoReadMaster.
+func NewDispatchMaster(db MongoDB) MgoDispatchMaster {
+	return MgoDispatchMaster{db: db}
+}
+
+// Reader returns a new store reader which provides methods for reading commited events from
+// underline mongo store.
+func (mgr MgoDispatchMaster) Dispatcher(aggregateID string, instanceID string) (cqrskit.DispatchRepo, error) {
+	return &MgoDispatchReader{
+		db:          mgr.db,
+		instanceID:  instanceID,
+		aggregateID: aggregateID,
+	}, nil
+}
+
+// MgoDispatchReader implements the cqrskit.DispatchRepo interface.
+type MgoDispatchReader struct {
+	db          MongoDB
+	aggregateID string
+	instanceID  string
+}
+
+// Dispatch sets a giving event commit as dispatch marking said events to avoid double
+// publishing and removes pending dispatch record from collection.
+// This method expects the id to be the hex version from the bson id.
+func (mdr MgoDispatchReader) Dispatch(ctx context.Context, idHex string) error {
+	if !bson.IsObjectIdHex(idHex) {
+		return ErrInvalidDispatchID
+	}
+
+	zdb, zess, zerr := mdr.db.New(false)
+	if zerr != nil {
+		return zerr
+	}
+
+	defer zess.Close()
+
+	id := bson.ObjectIdHex(idHex)
+	dispatchCollection := zdb.C(AggregateDispatchCollection)
+	return dispatchCollection.RemoveId(id)
+}
+
+// Undispatched returns all list of pending undispatched messages in the event store.
+func (mdr MgoDispatchReader) Undispatched(ctx context.Context) ([]cqrskit.PendingDispatch, error) {
+	zdb, _, zerr := mdr.db.New(true)
+	if zerr != nil {
+		return nil, zerr
+	}
+
+	disQuery := bson.M{
+		"aggregate_id": mdr.aggregateID,
+		"instance_id":  mdr.instanceID,
+	}
+
+	var pending []cqrskit.PendingDispatch
+	if err := zdb.C(AggregateDispatchCollection).Find(disQuery).All(&pending); err != nil {
+		return pending, err
+	}
+
+	return pending, nil
 }
