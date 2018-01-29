@@ -42,8 +42,8 @@ func TestMongoRepository(t *testing.T) {
 	testReadRepository_ReadSinceCount(t, hostdb, readRepo)
 	testReadRepository_ReadSinceCountWithLimit(t, hostdb, readRepo)
 	testReadRepository_ReadVersion(t, hostdb, readRepo)
-	testDispatchRepository_Dispatch(t, hostdb, dispatchRepo)
 	testDispatchRepository_Undispatch(t, hostdb, dispatchRepo)
+	testDispatchRepository_Dispatch(t, hostdb, dispatchRepo)
 	dropCollection(t, hostdb)
 }
 
