@@ -20,7 +20,7 @@ var (
 // calling appropriate methods.
 func (u *User) Apply(evs ...cqrskit.Event) error {
 	for _, event := range evs {
-		switch ev := event.EventData.(type) {
+		switch ev := event.Data.(type) {
 		case UserEmailUpdated:
 			return u.HandleUserEmailUpdated(ev)
 		case events.UserNameUpdated:
