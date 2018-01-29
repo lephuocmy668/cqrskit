@@ -11,9 +11,9 @@ var (
 
 // Apply embodies the internal logic necessary to apply specific events to a {{.Str.Name}} by
 // calling appropriate methods.
-func ({{$handle}} *{{.Str.Name}}) Apply(evs ...cqrskit.Event) error {
-	for _, event := range evs {
-		switch ev := event.EventData.(type) {
+func ({{$handle}} *{{.Str.Name}}) Apply(evs cqrskit.EventCommit) error {
+	for _, event := range evs.Events {
+		switch ev := event.Data.(type) {
 		{{ range $_, $pair := .Pairs }}case {{$pair.TypeName}}:
 			return {{$handle}}.{{$pair.Method.FuncName}}(ev)
 		{{end}}

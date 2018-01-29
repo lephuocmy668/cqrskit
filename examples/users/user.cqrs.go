@@ -18,8 +18,8 @@ var (
 
 // Apply embodies the internal logic necessary to apply specific events to a User by
 // calling appropriate methods.
-func (u *User) Apply(evs ...cqrskit.Event) error {
-	for _, event := range evs {
+func (u *User) Apply(evs cqrskit.EventCommit) error {
+	for _, event := range evs.Events {
 		switch ev := event.Data.(type) {
 		case UserEmailUpdated:
 			return u.HandleUserEmailUpdated(ev)
