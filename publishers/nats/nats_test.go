@@ -12,7 +12,7 @@ import (
 )
 
 func TestNATSPublisher(t *testing.T) {
-	t.Skip("Need to setup nats server")
+	//t.Skip("Need to setup nats server")
 	publisher := pubnats.NewNATSPublisher(nats.DefaultURL, cqrskit.JSONEncoder{})
 	defer publisher.Close()
 
@@ -23,7 +23,7 @@ func TestNATSPublisher(t *testing.T) {
 }
 
 func TestNATStreamingPublisher(t *testing.T) {
-	t.Skip("Need to setup nats server")
+	//t.Skip("Need to setup nats server")
 	publisher := pubnats.NewNATStreamingPublisher("test-daddy", "test-child", nats.DefaultURL, cqrskit.JSONEncoder{})
 	defer publisher.Close()
 
