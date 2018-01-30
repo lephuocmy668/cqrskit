@@ -46,7 +46,7 @@ type Encoder interface {
 // Decoder defines a type which embodies the deserialization of a byte slice into
 // a EventCommit into a byte slice.
 type Decoder interface {
-	Encode([]byte) (EventCommit, error)
+	Decode([]byte) (EventCommit, error)
 }
 
 //*******************************************************************************
@@ -109,11 +109,12 @@ type WriteRepo interface {
 
 // PubAck defines the data used for responding to a publish request
 type PubAck struct {
-	Version     int    `json:"version"`
-	Namespace   string `json:"namespace"`
-	CommitID    string `json:"commit_id"`
-	InstanceID  string `json:"instance_id"`
-	AggregateID string `json:"aggregate_id"`
+	Version     int         `json:"version"`
+	Namespace   string      `json:"namespace"`
+	CommitID    string      `json:"commit_id"`
+	InstanceID  string      `json:"instance_id"`
+	AggregateID string      `json:"aggregate_id"`
+	Response    interface{} `json:"response"`
 }
 
 // AckHandler defines a function type used to received a PubAck acknowledge

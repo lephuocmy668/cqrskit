@@ -12,12 +12,23 @@ CQRSKit provides a base libary that implements a simple but extensive Event Sour
 go get github.com/gokit/cqrskit/...
 ```
 
-## Storage Support
+## Storage Supported
 
-- MongoDB (Implemented)
-- BoltDB (Planned)
+Below are the available database able to be used as the event store technologies:
+
+- MongoDB
 - BadgerDB (Planned)
 - PostgreSQL (Planned)
+
+
+## Publisher Supported
+
+Below are the implemented queueing technology available for use 
+
+- NATS 
+- Amazon SQS
+- NSQ (Planned)
+- Redis (Planned)
 
 
 

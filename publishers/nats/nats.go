@@ -31,9 +31,10 @@ type pendingRequest struct {
 // underline transport.
 type NATSPublisher struct {
 	addr    string
-	conn    *nats.Conn
 	ops     []nats.Option
 	encoder cqrskit.Encoder
+	cl      sync.Mutex
+	conn    *nats.Conn
 }
 
 // NATSPublisherFrom returns a new instance of NATSPublisher using the provided
@@ -83,8 +84,26 @@ func (np *NATSPublisher) Publish(ns string, commit cqrskit.EventCommit, fn cqrsk
 	return nil
 }
 
+// Close ends the underline nats connection.
+func (np *NATSPublisher) Close() error {
+	np.cl.Lock()
+	defer np.cl.Unlock()
+
+	if np.conn == nil {
+		return nil
+	}
+
+	np.conn.Flush()
+	np.conn.Close()
+	np.conn = nil
+	return nil
+}
+
 // getConnection returns the current nats client for delivery messages.
 func (np *NATSPublisher) getConnection() (*nats.Conn, error) {
+	np.cl.Lock()
+	defer np.cl.Unlock()
+
 	if np.conn != nil {
 		return np.conn, nil
 	}
@@ -102,6 +121,7 @@ type NATStreamingPublisher struct {
 	addr       string
 	clientID   string
 	clusterID  string
+	cl         sync.Mutex
 	conn       gnats.Conn
 	nativeConn *nats.Conn
 	encoder    cqrskit.Encoder
@@ -157,6 +177,22 @@ func (np *NATStreamingPublisher) Publish(ns string, commit cqrskit.EventCommit, 
 		AggregateID: commit.AggregateID,
 	})
 
+	return nil
+}
+
+// Close ends the underline nats connection.
+func (np *NATStreamingPublisher) Close() error {
+	np.cl.Lock()
+	defer np.cl.Unlock()
+
+	if np.conn == nil {
+		return nil
+	}
+
+	np.nativeConn.Flush()
+	np.conn.Close()
+	np.nativeConn.Close()
+	np.conn = nil
 	return nil
 }
 
