@@ -9,24 +9,6 @@ import (
 // Event Type and Functions
 //*******************************************************************************
 
-// PendingDispatch embodies data stored by commit about undispatched commits
-// which have being persisted into underline event store.
-type PendingDispatch struct {
-	DispatchID  string `json:"dispatch_id" bson:"dispatch_id" db:"dispatch_id"`
-	CommitID    string `json:"commit_id" bson:"commit_id" db:"commit_id"`
-	InstanceID  string `json:"instance_id" bson:"instance_id" db:"instance_id"`
-	AggregateID string `json:"aggregate_id" bson:"aggregate_id" db:"aggregate_id"`
-}
-
-// CommitHeader embodies data stored within db about the commit of a event commit request.
-type CommitHeader struct {
-	Version     int       `json:"version" bson:"version" db:"version"`
-	CommitID    string    `json:"commit_id" bson:"commit_id" db:"commit_id"`
-	InstanceID  string    `json:"instance_id" bson:"instance_id" db:"instance_id"`
-	AggregateID string    `json:"aggregate_id" bson:"aggregate_id" db:"aggregate_id"`
-	Timestamp   time.Time `json:"timestamp" bson:"timestamp" db:"timestamp"`
-}
-
 // EventCommit embodies the collection of events that occurred from the execution
 // of a specific command which produces a series of events which are then used
 // used to regenerated said state.
@@ -51,21 +33,24 @@ type Event struct {
 	Header map[string]interface{} `json:"header" bson:"header" db:"header"`
 }
 
-// EventCommitRequest embodies the data sent into the store to have a set of
-// events committed for a giving aggregated and instance.
-// All ID values must be UUID and must commit from client of request
-// and not any other valid to ensure and maximize idempotent insertions and
-// de-duplication of event commit requests.
-type EventCommitRequest struct {
-	ID      string
-	Command string
-	Events  []Event
-	Created time.Time
-	Header  map[string]interface{}
+//*******************************************************************************
+// Encoding and Decoding Types
+//*******************************************************************************
+
+// Encoder defines a type which embodies the conversion or serialization of a event
+// commit into a byte slice.
+type Encoder interface {
+	Encode(EventCommit) ([]byte, error)
+}
+
+// Decoder defines a type which embodies the deserialization of a byte slice into
+// a EventCommit into a byte slice.
+type Decoder interface {
+	Encode([]byte) (EventCommit, error)
 }
 
 //*******************************************************************************
-// CQRS Repository Interface and Implementation
+// CQRS Repository Interface
 //*******************************************************************************
 
 // CQRSEventStore defines a central interface which is exposed by an implementing
@@ -78,8 +63,30 @@ type CQRSEventStore interface {
 }
 
 //*******************************************************************************
-// Write Repository Interface and Implementation
+// Write Repository Interface
 //*******************************************************************************
+
+// CommitHeader embodies data stored within db about the commit of a event commit request.
+type CommitHeader struct {
+	Version     int       `json:"version" bson:"version" db:"version"`
+	CommitID    string    `json:"commit_id" bson:"commit_id" db:"commit_id"`
+	InstanceID  string    `json:"instance_id" bson:"instance_id" db:"instance_id"`
+	AggregateID string    `json:"aggregate_id" bson:"aggregate_id" db:"aggregate_id"`
+	Timestamp   time.Time `json:"timestamp" bson:"timestamp" db:"timestamp"`
+}
+
+// EventCommitRequest embodies the data sent into the store to have a set of
+// events committed for a giving aggregated and instance.
+// All ID values must be UUID and must commit from client of request
+// and not any other valid to ensure and maximize idempotent insertions and
+// de-duplication of event commit requests.
+type EventCommitRequest struct {
+	ID      string
+	Command string
+	Events  []Event
+	Created time.Time
+	Header  map[string]interface{}
+}
 
 // WriteRepository defines the interface which provides
 // a single method to retrieve a WriteRepository which
@@ -97,8 +104,43 @@ type WriteRepo interface {
 }
 
 //*******************************************************************************
-// DispatchRepo Repository Interface and Implementation
+// Publisher Repository Interface
 //*******************************************************************************
+
+// PubAck defines the data used for responding to a publish request
+type PubAck struct {
+	Version     int    `json:"version"`
+	Namespace   string `json:"namespace"`
+	CommitID    string `json:"commit_id"`
+	InstanceID  string `json:"instance_id"`
+	AggregateID string `json:"aggregate_id"`
+}
+
+// AckHandler defines a function type used to received a PubAck acknowledge
+// response for the publishing of an EventCommit.
+type AckHandler func(ack PubAck)
+
+// Publisher defines an interface which defines the implementation to be done
+// for the publishing of a committed EventCommit using a desired namespace or tag.
+// It's expects the Publish method returns an error if the giving EventCommit failed
+// to be pushed into the underline queue else will call the handler once said request
+// is added successfully into the queue.
+type Publisher interface {
+	Publish(string, EventCommit, AckHandler) error
+}
+
+//*******************************************************************************
+// DispatchRepo Repository Interface
+//*******************************************************************************
+
+// PendingDispatch embodies data stored by commit about undispatched commits
+// which have being persisted into underline event store.
+type PendingDispatch struct {
+	DispatchID  string `json:"dispatch_id" bson:"dispatch_id" db:"dispatch_id"`
+	CommitID    string `json:"commit_id" bson:"commit_id" db:"commit_id"`
+	InstanceID  string `json:"instance_id" bson:"instance_id" db:"instance_id"`
+	AggregateID string `json:"aggregate_id" bson:"aggregate_id" db:"aggregate_id"`
+}
 
 // DispatchRepository exposes a interface which defines a mechanism for
 // implementers to present meta-details related to the dispatch state of
@@ -117,7 +159,7 @@ type DispatchRepo interface {
 }
 
 //*******************************************************************************
-// Read Repository Interface and Implementation
+// Read Repository Interface
 //*******************************************************************************
 
 // ReadRepository defines the interface which provides

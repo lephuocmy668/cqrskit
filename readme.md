@@ -12,3 +12,12 @@ CQRSKit provides a base libary that implements a simple but extensive Event Sour
 go get github.com/gokit/cqrskit/...
 ```
 
+## Storage Support
+
+- MongoDB (Implemented)
+- BoltDB (Planned)
+- BadgerDB (Planned)
+- PostgreSQL (Planned)
+
+
+

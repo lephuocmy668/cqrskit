@@ -80,6 +80,10 @@ type AggregateModel struct {
 	AggregatedID string        `bson:"aggregate_id"`
 }
 
+//*******************************************************************************
+// Writer Repository Implementation
+//*******************************************************************************
+
 // MgoWriteMaser implements the cqrskit.WriteRepository interface exposing
 // methods to have a direct writer for a giving aggregate and and instance.
 type MgoWriteMaster struct {
@@ -565,6 +569,10 @@ func (mwr *MgoWriteRepository) Write(ctx context.Context, req cqrskit.EventCommi
 	return header.CommitHeader, nil
 }
 
+//*******************************************************************************
+// Read Repository Implementation
+//*******************************************************************************
+
 // MgoReadMaser implements the cqrskit.ReadRepository interface exposing
 // methods to have a direct reader for a giving aggregate and related events instance.
 type MgoReadMaster struct {
@@ -740,6 +748,10 @@ func (mrr *MgoReadRepository) ReadSinceTime(ctx context.Context, ts time.Time, l
 
 	return events, nil
 }
+
+//*******************************************************************************
+// Dispatcher Repository Implementation
+//*******************************************************************************
 
 // MgoDisptchMaster implements the cqrskit.DispatchRepository interface exposing
 // methods to have a direct reader access to undispatched or unpublished events that
