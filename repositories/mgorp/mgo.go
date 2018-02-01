@@ -7,6 +7,7 @@ package mgorp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/gokit/cqrskit"
@@ -27,6 +28,7 @@ var (
 // consts values of aggregate collection names.
 const (
 	AggregateCollection             = "aggregates"
+	snapshotCollection              = "%s_snapshots"
 	AggregateModelCollection        = "aggregates_model"
 	AggregateDispatchCollection     = "aggregates_model_event_dispatch"
 	AggregateEventCommitCollection  = "aggregates_model_event_commits"
@@ -81,7 +83,253 @@ type AggregateModel struct {
 }
 
 //*******************************************************************************
-// Writer Repository Implementation
+// Snapshot Writer Repository Implementation
+//*******************************************************************************
+
+// MgoSnapshotWriters implements the cqrskit.SnapshotWriterRepository.
+type MgoSnapshotWriters struct {
+	db MongoDB
+}
+
+// NewSnapshotWriters returns a new instance of MgoWriteMaster.
+func NewSnapshotWriters(db MongoDB) MgoSnapshotWriters {
+	return MgoSnapshotWriters{db: db}
+}
+
+// Writer attempts to retrieve aggregate WriteRepo instance for writing snapshots for a giving
+// instance of an aggregate model. If aggregate record does not exists, it will be created.
+func (mw MgoSnapshotWriters) Writer(aggregateID string, instanceID string) (cqrskit.SnapshotWriter, error) {
+	zdb, _, err := mw.db.New(true)
+	if err != nil {
+		return nil, err
+	}
+
+	col := fmt.Sprintf(snapshotCollection, aggregateID)
+	snapshots := zdb.C(col)
+	total, err := snapshots.Count()
+	if err != nil && err != mgo.ErrNotFound {
+		return nil, err
+	}
+
+	if total == 0 {
+		if err := snapshots.EnsureIndex(mgo.Index{
+			Key:  []string{"instance_id"},
+			Name: "instance_id",
+		}); err != nil {
+			return nil, err
+		}
+
+		if err := snapshots.EnsureIndex(mgo.Index{
+			Key:  []string{"aggregate_id"},
+			Name: "aggregate_id",
+		}); err != nil {
+			return nil, err
+		}
+
+		if err := snapshots.EnsureIndex(mgo.Index{
+			Key:    []string{"revision"},
+			Name:   "revision",
+			Unique: true,
+		}); err != nil {
+			return nil, err
+		}
+
+		if err := snapshots.EnsureIndex(mgo.Index{
+			Key:    []string{"snap_id"},
+			Name:   "snap_id",
+			Unique: true,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return &MgoSnapshotWriter{
+		collection:  col,
+		db:          mw.db,
+		instanceID:  instanceID,
+		aggregateID: aggregateID,
+	}, nil
+}
+
+// MgoSnapshotWriter implements the cqrskit.SnapshotWriter for interacting through mongodb.
+type MgoSnapshotWriter struct {
+	db          MongoDB
+	aggregateID string
+	instanceID  string
+	collection  string
+}
+
+// Write attempts to add new snapshot into store.
+func (msw MgoSnapshotWriter) Write(ctx context.Context, snap cqrskit.Snapshot) error {
+	zdb, zes, err := msw.db.New(false)
+	if err != nil {
+		return err
+	}
+
+	defer zes.Close()
+
+	snapshots := zdb.C(msw.collection)
+	return snapshots.Insert(snap)
+}
+
+// Rewrite attempts to rewrite existing snapshot with using provided revision value and replacement snapshot.
+func (msw MgoSnapshotWriter) Rewrite(ctx context.Context, revision int, snap cqrskit.Snapshot) error {
+	zdb, zes, err := msw.db.New(false)
+	if err != nil {
+		return err
+	}
+
+	defer zes.Close()
+
+	snapshots := zdb.C(msw.collection)
+
+	query := bson.M{
+		"revision":     revision,
+		"aggregate_id": msw.aggregateID,
+		"instance_id":  msw.instanceID,
+	}
+
+	value := bson.M{
+		"payload":      snap.Payload,
+		"snap_id":      snap.SnapID,
+		"meta":         snap.Meta,
+		"header":       snap.Header,
+		"to_version":   snap.ToVersion,
+		"from_version": snap.FromVersion,
+	}
+
+	if err := snapshots.Update(query, bson.M{"$set": value}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+//*******************************************************************************
+// Snapshot Reader Repository Implementation
+//*******************************************************************************
+
+// MgoSnapshotReaders implements the cqrskit.SnapshotReaderRepository.
+type MgoSnapshotReaders struct {
+	db MongoDB
+}
+
+// NewSnapshotReaders returns a new instance of MgoWriteMaster.
+func NewSnapshotReaders(db MongoDB) MgoSnapshotReaders {
+	return MgoSnapshotReaders{db: db}
+}
+
+// Reader returns a new MgoSnapshotReader which implements cqrskit.SnapshotReader.
+func (mw MgoSnapshotReaders) Reader(aggregateID string, instanceID string) (cqrskit.SnapshotReader, error) {
+	col := fmt.Sprintf(snapshotCollection, aggregateID)
+	return &MgoSnapshotReader{
+		collection:  col,
+		db:          mw.db,
+		instanceID:  instanceID,
+		aggregateID: aggregateID,
+	}, nil
+}
+
+// MgoSnapshotReader implements the cqrskit.SnapshotReader for interacting through mongodb.
+type MgoSnapshotReader struct {
+	db          MongoDB
+	aggregateID string
+	instanceID  string
+	collection  string
+}
+
+// ReadRevision attempts to retrieve snapshot having the unique
+func (msw MgoSnapshotReader) ReadRevision(ctx context.Context, revision int) (cqrskit.Snapshot, error) {
+	var snap cqrskit.Snapshot
+
+	zdb, zes, err := msw.db.New(true)
+	if err != nil {
+		return snap, err
+	}
+
+	defer zes.Close()
+
+	snapshots := zdb.C(msw.collection)
+
+	query := bson.M{
+		"revision":     revision,
+		"aggregate_id": msw.aggregateID,
+		"instance_id":  msw.instanceID,
+	}
+
+	err = snapshots.Find(query).One(&snap)
+	return snap, err
+}
+
+// ReadID returns snapshot data referenced by the provided snapshot id.
+func (msw MgoSnapshotReader) ReadID(ctx context.Context, id string) (cqrskit.Snapshot, error) {
+	var snap cqrskit.Snapshot
+
+	zdb, zes, err := msw.db.New(true)
+	if err != nil {
+		return snap, err
+	}
+
+	defer zes.Close()
+
+	snapshots := zdb.C(msw.collection)
+
+	query := bson.M{
+		"snap_id":      id,
+		"aggregate_id": msw.aggregateID,
+		"instance_id":  msw.instanceID,
+	}
+
+	err = snapshots.Find(query).One(&snap)
+	return snap, err
+}
+
+// ReadAll returns a slice of all available sanpshot data in the db.
+func (msw MgoSnapshotReader) ReadAll(ctx context.Context) ([]cqrskit.Snapshot, error) {
+	zdb, zes, err := msw.db.New(true)
+	if err != nil {
+		return nil, err
+	}
+
+	defer zes.Close()
+
+	snapshots := zdb.C(msw.collection)
+
+	query := bson.M{
+		"aggregate_id": msw.aggregateID,
+		"instance_id":  msw.instanceID,
+	}
+
+	var snaps []cqrskit.Snapshot
+	err = snapshots.Find(query).All(&snaps)
+	return snaps, err
+}
+
+// ReadVersion returns all snapshot whoes version spans withinthe from - to range.
+func (msw MgoSnapshotReader) ReadVersion(ctx context.Context, from int, to int) ([]cqrskit.Snapshot, error) {
+	zdb, zes, err := msw.db.New(true)
+	if err != nil {
+		return nil, err
+	}
+
+	defer zes.Close()
+
+	snapshots := zdb.C(msw.collection)
+
+	query := bson.M{
+		"aggregate_id": msw.aggregateID,
+		"instance_id":  msw.instanceID,
+		"to_version":   bson.M{"$lte": to},
+		"from_version": bson.M{"$gte": from},
+	}
+
+	var snaps []cqrskit.Snapshot
+	err = snapshots.Find(query).All(&snaps)
+	return snaps, err
+}
+
+//*******************************************************************************
+// Event Writer Repository Implementation
 //*******************************************************************************
 
 // MgoWriteMaser implements the cqrskit.WriteRepository interface exposing
