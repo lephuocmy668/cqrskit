@@ -38,7 +38,7 @@ func ESCQRSGen(toPackage string, an ast.AnnotationDeclaration, str ast.StructDec
 			continue
 		}
 
-		if method.HasAnnotation("@escqrs-method-skip") {
+		if method.HasAnnotation("@escqrs-skip") {
 			log.Printf("Skipping: Function definition for %q in %q\n", method.FuncName, str.Name)
 			continue
 		}

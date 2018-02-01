@@ -32,3 +32,62 @@ Below are the implemented queueing technology available for use
 
 
 
+## CLI
+
+CQRSKit comes bundled with a command line code generation tool, that provides a means of avoiding the usage of reflect by generating
+an appropriate method on structs annotated with `@escqrs` to handle different events types, based on methods that have the `HandlePrefix`, except in cases there such methods have a `@escqrs-skip` annotation in comments.
+
+```go
+//@escqrs
+type User struct {
+	Version  int
+	Email    string
+	Username string
+}
+
+type UserEmailUpdated struct {
+	New string
+}
+
+func (u *User) HandleUserEmailUpdated(ev UserEmailUpdated) error {
+	return nil
+}
+
+func (u *User) HandleUserNameUpdated(ev events.UserNameUpdated) error {
+	return nil
+}
+
+//@escqrs-method-skip
+func (u *User) HandleUserRackUpdated(ev UserEmailUpdated) error {
+	return nil
+}
+```
+
+Where the above produces the following after running `cqrskit generate` in terminal:
+
+```go
+var (
+	// UserAggregateID represents the unique aggregate id for all events
+	// related to the User type. It is the typeName hashed using a md5 sum.
+	UserAggregateID = "f7091ac77d9b52a3ec5609891cd9f54f"
+)
+
+//*******************************************************************************
+// User Event Applier
+//*******************************************************************************
+
+// Apply embodies the internal logic necessary to apply specific events to a User by
+// calling appropriate methods.
+func (u *User) Apply(evs cqrskit.EventCommit) error {
+	for _, event := range evs.Events {
+		switch ev := event.Data.(type) {
+		case UserEmailUpdated:
+			return u.HandleUserEmailUpdated(ev)
+		case events.UserNameUpdated:
+			return u.HandleUserNameUpdated(ev)
+
+		}
+	}
+	return nil
+}
+```
