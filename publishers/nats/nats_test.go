@@ -26,7 +26,7 @@ func TestNATSPublisher(t *testing.T) {
 
 func TestNATStreamingPublisher(t *testing.T) {
 	//t.Skip("Need to setup nats server")
-	publisher := pubnats.NewNATStreamingPublisher("test-daddy", "test-child", defaultURL, cqrskit.JSONEncoder{})
+	publisher := pubnats.NewNATStreamingPublisher(defaultURL, "test-daddy", "test-child", cqrskit.JSONEncoder{})
 	defer publisher.Close()
 
 	if err := publisher.Publish("users.events", cqrskit.EventCommit{}, func(ack cqrskit.PubAck) {}); err != nil {
