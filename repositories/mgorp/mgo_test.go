@@ -134,6 +134,8 @@ func testMgoSnapshotWriter_Write(t *testing.T, db mdb.MongoDB, writers cqrskit.S
 				FromVersion: 1,
 				ToVersion:   2,
 				SnapID:      snapID,
+				AggregateID: aggregateId,
+				InstanceID:  modelId,
 			},
 			Done: func(e error) {
 				if e != nil {
@@ -146,6 +148,9 @@ func testMgoSnapshotWriter_Write(t *testing.T, db mdb.MongoDB, writers cqrskit.S
 				Revision:    2,
 				FromVersion: 1,
 				ToVersion:   3,
+				SnapID:      "4333343",
+				AggregateID: aggregateId,
+				InstanceID:  modelId,
 			},
 			Done: func(e error) {
 				if e != nil {
@@ -158,6 +163,9 @@ func testMgoSnapshotWriter_Write(t *testing.T, db mdb.MongoDB, writers cqrskit.S
 				Revision:    3,
 				FromVersion: 3,
 				ToVersion:   4,
+				SnapID:      "4343",
+				AggregateID: aggregateId,
+				InstanceID:  modelId,
 			},
 			Done: func(e error) {
 				if e != nil {
@@ -170,11 +178,16 @@ func testMgoSnapshotWriter_Write(t *testing.T, db mdb.MongoDB, writers cqrskit.S
 				Revision:    3,
 				FromVersion: 1,
 				ToVersion:   3,
+				SnapID:      "6456",
+				AggregateID: aggregateId,
+				InstanceID:  modelId,
 			},
 			Done: func(e error) {
 				if e == nil {
 					tests.Failed("Should have failed save snapshot data")
+					return
 				}
+				tests.Passed("Should have failed save snapshot data")
 			},
 		},
 	}
@@ -187,14 +200,16 @@ func testMgoSnapshotWriter_Write(t *testing.T, db mdb.MongoDB, writers cqrskit.S
 
 	count, err := repo.Count(context.Background())
 	if err != nil {
-		tests.FailedWithError(err, "Should have successfully retrieved event count")
+		tests.FailedWithError(err, "Should have successfully retrieved count")
 	}
-	tests.Passed("Should have successfully retrieved event count")
+	tests.Passed("Should have successfully retrieved count")
 
 	if count != 3 {
-		tests.Failed("Should have total event record of 2 in db")
+		tests.Info("Expected: 3")
+		tests.Info("Received: %d", count)
+		tests.Failed("Should have total event record of 3 in db")
 	}
-	tests.Passed("Should have total event record of 2 in db")
+	tests.Passed("Should have total event record of 3 in db")
 
 	tests.Passed("Should have successfully saved all events")
 }
@@ -246,6 +261,11 @@ func dropCollection(t *testing.T, db mdb.MongoDB) {
 	tests.Passed("Should have successfully gotten db session")
 
 	defer zses.Close()
+
+	if err := zdb.C(mgorp.SnapshotCollection).DropCollection(); err != nil {
+		tests.FailedWithError(err, "Should have successfully dropped 'snapshots' collection")
+	}
+	tests.Passed("Should have successfully dropped 'snapshots' collection")
 
 	if err := zdb.C(mgorp.AggregateCollection).DropCollection(); err != nil {
 		tests.FailedWithError(err, "Should have successfully dropped 'aggregate' collection")
