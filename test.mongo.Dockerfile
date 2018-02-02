@@ -1,4 +1,4 @@
-FROM influx6/gomongrel:latest
+FROM influx6/gomongrel:0.0.1
 
 RUN mkdir -p /go/src/github.com/gokit
 COPY . /go/src/github.com/gokit/cqrskit
