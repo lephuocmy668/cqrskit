@@ -579,11 +579,6 @@ type MgoWriteRepository struct {
 	instanceID  string
 }
 
-type lastVersion struct {
-	Version        int64  `bson:"version"`
-	LamportVersion string `bson:"lamport_version"`
-}
-
 // DeleteAll removes all record associated with giving event and returns total
 // records of all event records removed.
 func (mwr *MgoWriteRepository) DeleteAll(ctx context.Context) (int, error) {
