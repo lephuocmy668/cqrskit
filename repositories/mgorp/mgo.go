@@ -7,7 +7,6 @@ package mgorp
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/gokit/cqrskit"
@@ -28,7 +27,7 @@ var (
 // consts values of aggregate collection names.
 const (
 	AggregateCollection             = "aggregates"
-	snapshotCollection              = "%s_snapshots"
+	SnapshotCollection              = "snapshots"
 	AggregateModelCollection        = "aggregates_model"
 	AggregateDispatchCollection     = "aggregates_model_event_dispatch"
 	AggregateEventCommitCollection  = "aggregates_model_event_commits"
@@ -104,8 +103,7 @@ func (mw MgoSnapshotWriters) Writer(aggregateID string, instanceID string) (cqrs
 		return nil, err
 	}
 
-	col := fmt.Sprintf(snapshotCollection, aggregateID)
-	snapshots := zdb.C(col)
+	snapshots := zdb.C(SnapshotCollection)
 	total, err := snapshots.Count()
 	if err != nil && err != mgo.ErrNotFound {
 		return nil, err
@@ -144,10 +142,10 @@ func (mw MgoSnapshotWriters) Writer(aggregateID string, instanceID string) (cqrs
 	}
 
 	return &MgoSnapshotWriter{
-		collection:  col,
 		db:          mw.db,
 		instanceID:  instanceID,
 		aggregateID: aggregateID,
+		collection:  SnapshotCollection,
 	}, nil
 }
 
@@ -170,6 +168,22 @@ func (msw MgoSnapshotWriter) Write(ctx context.Context, snap cqrskit.Snapshot) e
 
 	snapshots := zdb.C(msw.collection)
 	return snapshots.Insert(snap)
+}
+
+// Count returns total snapshots available for aggregate type and instance model.
+func (msw MgoSnapshotWriter) Count(ctx context.Context) (int, error) {
+	zdb, _, err := msw.db.New(true)
+	if err != nil {
+		return -1, err
+	}
+
+	query := bson.M{
+		"aggregate_id": msw.aggregateID,
+		"instance_id":  msw.instanceID,
+	}
+
+	snapshots := zdb.C(msw.collection)
+	return snapshots.Find(query).Count()
 }
 
 // Rewrite attempts to rewrite existing snapshot with using provided revision value and replacement snapshot.
@@ -221,12 +235,11 @@ func NewSnapshotReaders(db MongoDB) MgoSnapshotReaders {
 
 // Reader returns a new MgoSnapshotReader which implements cqrskit.SnapshotReader.
 func (mw MgoSnapshotReaders) Reader(aggregateID string, instanceID string) (cqrskit.SnapshotReader, error) {
-	col := fmt.Sprintf(snapshotCollection, aggregateID)
 	return &MgoSnapshotReader{
-		collection:  col,
 		db:          mw.db,
 		instanceID:  instanceID,
 		aggregateID: aggregateID,
+		collection:  SnapshotCollection,
 	}, nil
 }
 
@@ -242,12 +255,10 @@ type MgoSnapshotReader struct {
 func (msw MgoSnapshotReader) ReadRevision(ctx context.Context, revision int) (cqrskit.Snapshot, error) {
 	var snap cqrskit.Snapshot
 
-	zdb, zes, err := msw.db.New(true)
+	zdb, _, err := msw.db.New(true)
 	if err != nil {
 		return snap, err
 	}
-
-	defer zes.Close()
 
 	snapshots := zdb.C(msw.collection)
 
@@ -261,16 +272,32 @@ func (msw MgoSnapshotReader) ReadRevision(ctx context.Context, revision int) (cq
 	return snap, err
 }
 
+// Count returns total snapshots available for aggregate type and instance model.
+func (msw MgoSnapshotReader) Count(ctx context.Context) (int, error) {
+	zdb, _, err := msw.db.New(true)
+	if err != nil {
+		return -1, err
+	}
+
+	snapshots := zdb.C(msw.collection)
+
+	query := bson.M{
+		"aggregate_id": msw.aggregateID,
+		"instance_id":  msw.instanceID,
+	}
+
+	total, err := snapshots.Find(query).Count()
+	return total, err
+}
+
 // ReadID returns snapshot data referenced by the provided snapshot id.
 func (msw MgoSnapshotReader) ReadID(ctx context.Context, id string) (cqrskit.Snapshot, error) {
 	var snap cqrskit.Snapshot
 
-	zdb, zes, err := msw.db.New(true)
+	zdb, _, err := msw.db.New(true)
 	if err != nil {
 		return snap, err
 	}
-
-	defer zes.Close()
 
 	snapshots := zdb.C(msw.collection)
 
@@ -286,12 +313,10 @@ func (msw MgoSnapshotReader) ReadID(ctx context.Context, id string) (cqrskit.Sna
 
 // ReadAll returns a slice of all available sanpshot data in the db.
 func (msw MgoSnapshotReader) ReadAll(ctx context.Context) ([]cqrskit.Snapshot, error) {
-	zdb, zes, err := msw.db.New(true)
+	zdb, _, err := msw.db.New(true)
 	if err != nil {
 		return nil, err
 	}
-
-	defer zes.Close()
 
 	snapshots := zdb.C(msw.collection)
 
@@ -307,12 +332,10 @@ func (msw MgoSnapshotReader) ReadAll(ctx context.Context) ([]cqrskit.Snapshot, e
 
 // ReadVersion returns all snapshot whoes version spans withinthe from - to range.
 func (msw MgoSnapshotReader) ReadVersion(ctx context.Context, from int, to int) ([]cqrskit.Snapshot, error) {
-	zdb, zes, err := msw.db.New(true)
+	zdb, _, err := msw.db.New(true)
 	if err != nil {
 		return nil, err
 	}
-
-	defer zes.Close()
 
 	snapshots := zdb.C(msw.collection)
 
@@ -852,7 +875,7 @@ type MgoReadRepository struct {
 
 // CountBatches returns total number of event batches saved, with total events across all batches
 // available within db.
-func (mrr *MgoReadRepository) CountCommits(ctx context.Context) (int, error) {
+func (mrr *MgoReadRepository) Count(ctx context.Context) (int, error) {
 	zdb, _, zerr := mrr.db.New(true)
 	if zerr != nil {
 		return -1, zerr

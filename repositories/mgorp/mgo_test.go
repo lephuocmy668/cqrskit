@@ -17,6 +17,7 @@ import (
 var (
 	aggregateId = "43543b2323I"
 	modelId     = "233JNIosd232"
+	snapID      = "5454465454IDdss"
 	created     = time.Now()
 	config      = mdb.Config{
 		DB:       os.Getenv("MONGO_DB"),
@@ -27,6 +28,196 @@ var (
 	}
 )
 
+func TestMongoSnapshotRepository(t *testing.T) {
+	hostdb := mdb.NewMongoDB(config)
+	writeRepo := mgorp.NewSnapshotWriters(hostdb)
+	readRepo := mgorp.NewSnapshotReaders(hostdb)
+
+	testMgoSnapshotWriter_Write(t, hostdb, writeRepo)
+	testMgoSnapshotWriter_Rewrite(t, hostdb, writeRepo)
+	testMgoSnapshotReader_ReadAll(t, hostdb, readRepo)
+	testMgoSnapshotReader_ReadID(t, hostdb, readRepo)
+	testMgoSnapshotReader_ReadVersion(t, hostdb, readRepo)
+	testMgoSnapshotReader_ReadRevision(t, hostdb, readRepo)
+}
+
+func testMgoSnapshotReader_ReadVersion(t *testing.T, db mdb.MongoDB, readers cqrskit.SnapshotReaderRepository) {
+	repo, err := readers.Reader(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	snaps, err := repo.ReadVersion(context.Background(), 1, 3)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if recCount := len(snaps); recCount != 2 {
+		tests.Info("Expected Count: %d", 2)
+		tests.Info("Received Count: %d", recCount)
+		tests.Failed("Should have retrieved expected records in count")
+	}
+	tests.Passed("Should have retrieved expected records in count")
+}
+
+func testMgoSnapshotReader_ReadRevision(t *testing.T, db mdb.MongoDB, readers cqrskit.SnapshotReaderRepository) {
+	repo, err := readers.Reader(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	_, err = repo.ReadRevision(context.Background(), 1)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved record")
+	}
+	tests.Passed("Should have successfully retrieved record")
+}
+
+func testMgoSnapshotReader_ReadID(t *testing.T, db mdb.MongoDB, readers cqrskit.SnapshotReaderRepository) {
+	repo, err := readers.Reader(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	_, err = repo.ReadID(context.Background(), snapID)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved record")
+	}
+	tests.Passed("Should have successfully retrieved record")
+}
+
+func testMgoSnapshotReader_ReadAll(t *testing.T, db mdb.MongoDB, readers cqrskit.SnapshotReaderRepository) {
+	repo, err := readers.Reader(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
+	}
+	tests.Passed("Should have successfully gotten aggregate read repository")
+
+	totalRecords, err := repo.Count(context.Background())
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	events, err := repo.ReadAll(context.Background())
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved all records")
+	}
+	tests.Passed("Should have successfully retrieved all records")
+
+	if recCount := len(events); recCount != totalRecords {
+		tests.Info("Expected Count: %d", totalRecords)
+		tests.Info("Received Count: %d", recCount)
+		tests.Failed("Should have retrieved expected records in count")
+	}
+	tests.Passed("Should have retrieved expected records in count")
+}
+
+func testMgoSnapshotWriter_Write(t *testing.T, db mdb.MongoDB, writers cqrskit.SnapshotWriterRepository) {
+	repo, err := writers.Writer(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully created new aggregate repository")
+	}
+	tests.Passed("Should have successfully created new aggregate repository")
+
+	events := []struct {
+		Snap cqrskit.Snapshot
+		Done func(error)
+	}{
+		{
+			Snap: cqrskit.Snapshot{
+				Revision:    1,
+				FromVersion: 1,
+				ToVersion:   2,
+				SnapID:      snapID,
+			},
+			Done: func(e error) {
+				if e != nil {
+					tests.FailedWithError(e, "Should have successfully saved new snapshot")
+				}
+			},
+		},
+		{
+			Snap: cqrskit.Snapshot{
+				Revision:    2,
+				FromVersion: 1,
+				ToVersion:   3,
+			},
+			Done: func(e error) {
+				if e != nil {
+					tests.FailedWithError(e, "Should have successfully saved new snapshot")
+				}
+			},
+		},
+		{
+			Snap: cqrskit.Snapshot{
+				Revision:    3,
+				FromVersion: 3,
+				ToVersion:   4,
+			},
+			Done: func(e error) {
+				if e != nil {
+					tests.FailedWithError(e, "Should have successfully saved new snapshot")
+				}
+			},
+		},
+		{
+			Snap: cqrskit.Snapshot{
+				Revision:    3,
+				FromVersion: 1,
+				ToVersion:   3,
+			},
+			Done: func(e error) {
+				if e == nil {
+					tests.Failed("Should have failed save snapshot data")
+				}
+			},
+		},
+	}
+
+	for _, event := range events {
+		if err := repo.Write(context.Background(), event.Snap); event.Done != nil {
+			event.Done(err)
+		}
+	}
+
+	count, err := repo.Count(context.Background())
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully retrieved event count")
+	}
+	tests.Passed("Should have successfully retrieved event count")
+
+	if count != 3 {
+		tests.Failed("Should have total event record of 2 in db")
+	}
+	tests.Passed("Should have total event record of 2 in db")
+
+	tests.Passed("Should have successfully saved all events")
+}
+
+func testMgoSnapshotWriter_Rewrite(t *testing.T, db mdb.MongoDB, writers cqrskit.SnapshotWriterRepository) {
+	snap := cqrskit.Snapshot{
+		Revision:    3,
+		FromVersion: 5,
+		ToVersion:   6,
+	}
+
+	repo, err := writers.Writer(aggregateId, modelId)
+	if err != nil {
+		tests.FailedWithError(err, "Should have successfully created new aggregate repository")
+	}
+	tests.Passed("Should have successfully created new aggregate repository")
+
+	if err := repo.Rewrite(context.Background(), snap.Revision, snap); err != nil {
+		tests.FailedWithError(err, "Should have successfully written existing snapshot record")
+	}
+	tests.Passed("Should have successfully written existing snapshot record")
+}
+
 func TestMongoRepository(t *testing.T) {
 	hostdb := mdb.NewMongoDB(config)
 	writeRepo := mgorp.NewWriteMaster(hostdb)
@@ -36,7 +227,7 @@ func TestMongoRepository(t *testing.T) {
 	testWriteMaster_New(t, hostdb, writeRepo)
 	testWriteRepository_SaveEvents(t, hostdb, writeRepo)
 	testReadRepository_ReadAll(t, hostdb, readRepo)
-	testReadRepository_CountCommits(t, hostdb, readRepo)
+	testReadRepository_Count(t, hostdb, readRepo)
 	testReadRepository_ReadFromVersion(t, hostdb, readRepo)
 	testReadRepository_ReadFromVersionWithLimit(t, hostdb, readRepo)
 	testReadRepository_ReadSinceCount(t, hostdb, readRepo)
@@ -199,7 +390,7 @@ func testWriteRepository_SaveEvents(t *testing.T, db mdb.MongoDB, hostRepo mgorp
 	}
 
 	for _, event := range events {
-		if _, err := repo.Write(context.Background(), event.Event); err != nil && event.Done != nil {
+		if _, err := repo.Write(context.Background(), event.Event); event.Done != nil {
 			event.Done(err)
 		}
 	}
@@ -218,7 +409,7 @@ func testWriteRepository_SaveEvents(t *testing.T, db mdb.MongoDB, hostRepo mgorp
 	tests.Passed("Should have successfully saved all events")
 }
 
-func testReadRepository_CountCommits(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
+func testReadRepository_Count(t *testing.T, db mdb.MongoDB, hostRepo mgorp.MgoReadMaster) {
 	repo, err := hostRepo.Reader(aggregateId, modelId)
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully gotten aggregate read repository")
@@ -231,7 +422,7 @@ func testReadRepository_CountCommits(t *testing.T, db mdb.MongoDB, hostRepo mgor
 	}
 	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
 
-	totalRecords, err := mgoRepo.CountCommits(context.Background())
+	totalRecords, err := mgoRepo.Count(context.Background())
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully retrieved records count")
 	}
@@ -256,7 +447,7 @@ func testReadRepository_ReadAll(t *testing.T, db mdb.MongoDB, hostRepo mgorp.Mgo
 	}
 	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
 
-	totalRecords, err := mgoRepo.CountCommits(context.Background())
+	totalRecords, err := mgoRepo.Count(context.Background())
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully retrieved all records")
 	}
@@ -289,7 +480,7 @@ func testReadRepository_ReadFromVersion(t *testing.T, db mdb.MongoDB, hostRepo m
 	}
 	tests.Passed("Should have a underline *mgorp.MgoReadMaster")
 
-	totalRecords, err := mgoRepo.CountCommits(context.Background())
+	totalRecords, err := mgoRepo.Count(context.Background())
 	if err != nil {
 		tests.FailedWithError(err, "Should have successfully retrieved all records")
 	}

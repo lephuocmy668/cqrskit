@@ -84,28 +84,29 @@ type Snapshot struct {
 	Header      map[string]interface{} `json:"header" bson:"header" db:"header"`
 }
 
-// SnapshotWriter defines a interface which expose a method to get a snapshot
+// SnapshotWriterRepository defines a interface which expose a method to get a snapshot
 // writer.
 type SnapshotWriterRepository interface {
 	Writer(aggregationID string, instanceID string) (SnapshotWriter, error)
 }
 
-// SnapshotReader defines a interface which expose a method to get a snapshot
+// SnapshotReaderRepository defines a interface which expose a method to get a snapshot
 // reader.
-type SnapshotReaderRepoitory interface {
+type SnapshotReaderRepository interface {
 	Reader(aggregationID string, instanceID string) (SnapshotReader, error)
 }
 
 // SnapshotRepository defines a type which provides methods to gain access to
 // snapshot readers and writers for a giving aggregate and instance.
 type SnapshotRepository interface {
-	SnapshotReaderRepoitory
+	SnapshotReaderRepository
 	SnapshotWriterRepository
 }
 
 // SnapshotReader defines an interface that exposes a means to read snapshot details
 // from a underline store.
 type SnapshotReader interface {
+	Count(context.Context) (int, error)
 	ReadAll(context.Context) ([]Snapshot, error)
 	ReadID(context.Context, string) (Snapshot, error)
 	ReadRevision(context.Context, int) (Snapshot, error)
@@ -115,6 +116,7 @@ type SnapshotReader interface {
 // SnapshotWriter defines an interface that exposes a means methods to write
 // new snapshots into a underline store.
 type SnapshotWriter interface {
+	Count(context.Context) (int, error)
 	Write(context.Context, Snapshot) error
 	Rewrite(ctx context.Context, revision int, snap Snapshot) error
 }
@@ -233,7 +235,7 @@ type ReadRepository interface {
 // of events for giving type , returning an Applier
 // to apply said events to target.
 type ReadRepo interface {
-	CountCommits(context.Context) (int, error)
+	Count(context.Context) (int, error)
 	ReadAll(context.Context) ([]EventCommit, error)
 	ReadVersion(ctx context.Context, version int64) (EventCommit, error)
 	ReadSinceCount(ctx context.Context, count int) ([]EventCommit, error)

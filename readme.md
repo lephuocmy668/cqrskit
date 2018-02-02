@@ -31,8 +31,7 @@ Below are the implemented queueing technology available for use
 - Redis (Planned)
 
 
-
-## CLI
+## CLI Tooling
 
 CQRSKit comes bundled with a command line code generation tool, that provides a means of avoiding the usage of reflect by generating
 an appropriate method on structs annotated with `@escqrs` to handle different events types, based on methods that have the `HandlePrefix`, except in cases there such methods have a `@escqrs-skip` annotation in comments.
