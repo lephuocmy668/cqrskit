@@ -166,17 +166,27 @@ type Decoder interface {
 }
 
 //*******************************************************************************
-// CQRS Repository Interface
+// ESCQRS Repository Struct
 //*******************************************************************************
 
-// CQRSEventStore defines a central interface which is exposed by an implementing
-// event store which provides access to readers, writers and dispatchers for
-// storing and retrieving records for all event stored within.
-type CQRSEventStore interface {
-	ReadRepository
+// ESCQRS defines a central struct which provides a central structure
+// which houses both an implementation of dispatchers, events and snapshots
+// to be passed around as needed.
+type ESCQRS struct {
+	Events     EventRepository
+	Snapshots  SnapshotRepository
+	Dispatcher DispatchRepository
+}
+
+//*******************************************************************************
+// Event Repository Interface
+//*******************************************************************************
+
+// EventRepository defines an interface which combines the reader and writers
+// for events.
+type EventRepository interface {
 	WriteRepository
-	DispatchRepository
-	SnapshotRepository
+	ReadRepository
 }
 
 //*******************************************************************************
