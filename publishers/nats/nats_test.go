@@ -14,7 +14,6 @@ const (
 )
 
 func TestNATSPublisher(t *testing.T) {
-	//t.Skip("Need to setup nats server")
 	publisher := pubnats.NewNATSPublisher(defaultURL, cqrskit.JSONEncoder{})
 	defer publisher.Close()
 
@@ -25,7 +24,6 @@ func TestNATSPublisher(t *testing.T) {
 }
 
 func TestNATStreamingPublisher(t *testing.T) {
-	//t.Skip("Need to setup nats server")
 	publisher := pubnats.NewNATStreamingPublisher(defaultURL, "test-daddy", "test-child", cqrskit.JSONEncoder{})
 	defer publisher.Close()
 

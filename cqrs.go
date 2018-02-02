@@ -176,6 +176,7 @@ type CQRSEventStore interface {
 	ReadRepository
 	WriteRepository
 	DispatchRepository
+	SnapshotRepository
 }
 
 //*******************************************************************************
