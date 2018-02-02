@@ -14,7 +14,7 @@ import (
 
 func TestSQSPublisher(t *testing.T) {
 	mockSVC := mockSQSClient{
-		actions: make(chan struct{}, 0),
+		actions: make(chan struct{}),
 	}
 
 	publisher := pubsqs.NewSQSPublisher(func(region string) (sqsiface.SQSAPI, error) {

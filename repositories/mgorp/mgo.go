@@ -212,11 +212,7 @@ func (msw MgoSnapshotWriter) Rewrite(ctx context.Context, revision int, snap cqr
 		"from_version": snap.FromVersion,
 	}
 
-	if err := snapshots.Update(query, bson.M{"$set": value}); err != nil {
-		return err
-	}
-
-	return nil
+	return snapshots.Update(query, bson.M{"$set": value})
 }
 
 //*******************************************************************************
@@ -572,11 +568,7 @@ func (mw *MgoWriteMaster) createAggregate(aggregateID string, zdb *mgo.Database)
 	aggr.Id = bson.NewObjectId()
 	aggr.AggregateID = aggregateID
 
-	if err := zcol.Insert(aggr); err != nil {
-		return err
-	}
-
-	return nil
+	return zcol.Insert(aggr)
 }
 
 // MgoWriteRepository implements the cqrskit.WriteRepo
@@ -1086,9 +1078,6 @@ func (mdr MgoDispatchReader) Undispatched(ctx context.Context) ([]cqrskit.Pendin
 	}
 
 	var pending []cqrskit.PendingDispatch
-	if err := zdb.C(AggregateDispatchCollection).Find(disQuery).All(&pending); err != nil {
-		return pending, err
-	}
-
-	return pending, nil
+	err := zdb.C(AggregateDispatchCollection).Find(disQuery).All(&pending)
+	return pending, err
 }

@@ -9,19 +9,19 @@ import (
 	gnats "github.com/nats-io/go-nats-streaming"
 )
 
-var (
-	ackPool = sync.Pool{
-		New: func() interface{} {
-			return new(pendingRequest)
-		},
-	}
-)
-
-type pendingRequest struct {
-	next   *pendingRequest
-	commit cqrskit.EventCommit
-	Ack    cqrskit.AckHandler
-}
+//var (
+//	ackPool = sync.Pool{
+//		New: func() interface{} {
+//			return new(pendingRequest)
+//		},
+//	}
+//)
+//
+//type pendingRequest struct {
+//	next   *pendingRequest
+//	commit cqrskit.EventCommit
+//	Ack    cqrskit.AckHandler
+//}
 
 //*******************************************************************************
 // NATS Publisher
