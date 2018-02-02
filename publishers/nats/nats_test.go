@@ -11,9 +11,13 @@ import (
 	pubnats "github.com/gokit/cqrskit/publishers/nats"
 )
 
+const (
+	defaultURL = "nats://0.0.0.0:4222"
+)
+
 func TestNATSPublisher(t *testing.T) {
 	//t.Skip("Need to setup nats server")
-	publisher := pubnats.NewNATSPublisher(nats.DefaultURL, cqrskit.JSONEncoder{})
+	publisher := pubnats.NewNATSPublisher(defaultURL, cqrskit.JSONEncoder{})
 	defer publisher.Close()
 
 	if err := publisher.Publish("users.events", cqrskit.EventCommit{}, func(ack cqrskit.PubAck) {}); err != nil {
